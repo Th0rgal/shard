@@ -108,12 +108,21 @@ pub fn upsert_account(accounts: &mut Accounts, account: Account) {
 }
 
 pub fn remove_account(accounts: &mut Accounts, id: &str) -> bool {
+    let mut removed_uuids = Vec::new();
+    for account in &accounts.accounts {
+        if account.uuid == id || account.username == id {
+            removed_uuids.push(account.uuid.clone());
+        }
+    }
+
     let before = accounts.accounts.len();
     accounts
         .accounts
-        .retain(|account| account.uuid != id && account.username != id);
-    if accounts.active.as_deref() == Some(id) {
-        accounts.active = None;
+        .retain(|account| !removed_uuids.contains(&account.uuid));
+    if let Some(active) = accounts.active.as_deref() {
+        if removed_uuids.iter().any(|uuid| uuid == active) {
+            accounts.active = None;
+        }
     }
     before != accounts.accounts.len()
 }
