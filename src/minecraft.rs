@@ -342,7 +342,7 @@ fn ensure_libraries(
             classpath.push(lib_path);
         } else if let Some(path) = maven_path_from_name(&library.name) {
             let base_url = library.url.as_deref().unwrap_or(LIBRARIES_BASE);
-            let url = format!("{}{}", base_url, path);
+            let url = join_url(base_url, &path);
             let lib_path = paths.minecraft_library_path(&path);
             download_with_sha1(&url, &lib_path, None)?;
             classpath.push(lib_path);
@@ -368,7 +368,7 @@ fn ensure_libraries(
                     maven_path_from_name_with_classifier(&library.name, &classifier)
                 {
                     let base_url = library.url.as_deref().unwrap_or(LIBRARIES_BASE);
-                    let url = format!("{}{}", base_url, path);
+                    let url = join_url(base_url, &path);
                     let jar_path = paths.minecraft_library_path(&path);
                     download_with_sha1(&url, &jar_path, None)?;
                     extract_natives(&jar_path, &natives_dir, library.extract.as_ref())?;
@@ -716,6 +716,14 @@ fn maven_path_from_name_with_classifier(name: &str, classifier: &str) -> Option<
 
     let file = format!("{}-{}-{}.{}", artifact, version, classifier, ext);
     Some(format!("{group}/{artifact}/{version}/{file}"))
+}
+
+fn join_url(base: &str, path: &str) -> String {
+    if base.ends_with('/') {
+        format!("{base}{path}")
+    } else {
+        format!("{base}/{path}")
+    }
 }
 
 #[derive(Clone, Deserialize)]
