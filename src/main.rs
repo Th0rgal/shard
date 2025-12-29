@@ -256,8 +256,8 @@ fn run() -> Result<()> {
                 version,
             } => {
                 let mut profile_data = load_profile(&paths, &profile)?;
-                let (path, source) = resolve_input(&paths, &input)?;
-                let stored = store_content(&paths, ContentKind::Mod, &path, source)?;
+                let (path, source, file_name_hint) = resolve_input(&paths, &input)?;
+                let stored = store_content(&paths, ContentKind::Mod, &path, source, file_name_hint)?;
                 let mod_ref = ContentRef {
                     name: name.unwrap_or(stored.name),
                     hash: stored.hash,
@@ -397,8 +397,8 @@ fn handle_pack_command(paths: &Paths, kind: ContentKind, command: PackCommand) -
             version,
         } => {
             let mut profile_data = load_profile(paths, &profile)?;
-            let (path, source) = resolve_input(paths, &input)?;
-            let stored = store_content(paths, kind, &path, source)?;
+            let (path, source, file_name_hint) = resolve_input(paths, &input)?;
+            let stored = store_content(paths, kind, &path, source, file_name_hint)?;
             let pack_ref = ContentRef {
                 name: name.unwrap_or(stored.name),
                 hash: stored.hash,
@@ -469,13 +469,13 @@ fn parse_loader(value: &str) -> Result<Loader> {
     })
 }
 
-fn resolve_input(paths: &Paths, input: &str) -> Result<(PathBuf, Option<String>)> {
+fn resolve_input(paths: &Paths, input: &str) -> Result<(PathBuf, Option<String>, Option<String>)> {
     if input.starts_with("http://") || input.starts_with("https://") {
-        let (download_path, _file_name) = store_from_url(paths, input)?;
-        Ok((download_path, Some(input.to_string())))
+        let (download_path, file_name) = store_from_url(paths, input)?;
+        Ok((download_path, Some(input.to_string()), Some(file_name)))
     } else {
         let path = expand_tilde(input)?;
-        Ok((path, None))
+        Ok((path, None, None))
     }
 }
 

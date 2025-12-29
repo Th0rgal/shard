@@ -59,6 +59,7 @@ pub fn store_content(
     kind: ContentKind,
     input_path: &Path,
     source: Option<String>,
+    file_name_override: Option<String>,
 ) -> Result<StoredContent> {
     if !input_path.exists() {
         bail!("file not found: {}", input_path.display());
@@ -76,10 +77,13 @@ pub fn store_content(
         })?;
     }
 
-    let file_name = input_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(sanitize_filename)
+    let file_name = file_name_override
+        .or_else(|| {
+            input_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(sanitize_filename)
+        })
         .unwrap_or_else(|| format!("{}-{}.zip", kind.label(), &hash_hex[..8]));
     let name = Path::new(&file_name)
         .file_stem()
