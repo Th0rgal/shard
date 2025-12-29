@@ -147,7 +147,7 @@ impl Paths {
     }
 
     pub fn minecraft_asset_object(&self, hash: &str) -> PathBuf {
-        let prefix = &hash[0..2];
+        let prefix = hash.get(0..2).unwrap_or(hash);
         self.minecraft_assets_objects.join(prefix).join(hash)
     }
 
