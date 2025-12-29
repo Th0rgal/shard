@@ -10,6 +10,16 @@ export default defineConfig({
   },
   build: {
     target: "es2020",
-    outDir: "dist"
+    outDir: "dist",
+    // three.js is large but lazy-loaded, so we accept the warning
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split three.js and skinview3d into a separate chunk (only loaded when needed)
+          "skinviewer": ["three", "skinview3d"],
+        }
+      }
+    }
   }
 });

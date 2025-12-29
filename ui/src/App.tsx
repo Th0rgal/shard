@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState, lazy, Suspense } from "react";
 import clsx from "clsx";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -14,8 +14,6 @@ import {
   ProfileView,
   AccountsView,
   SettingsView,
-  StoreView,
-  LogsView,
   Toast,
   ConfirmDialog,
   CreateProfileModal,
@@ -25,9 +23,13 @@ import {
   DeviceCodeModal,
   LaunchPlanModal,
   ProfileJsonModal,
-  AccountDetailsModal,
 } from "./components";
 import type { CreateProfileForm } from "./components";
+
+// Lazy load heavy components (three.js/skinview3d)
+const StoreView = lazy(() => import("./components/StoreView").then(m => ({ default: m.StoreView })));
+const LogsView = lazy(() => import("./components/LogsView").then(m => ({ default: m.LogsView })));
+const AccountDetailsModal = lazy(() => import("./components/modals/AccountDetailsModal").then(m => ({ default: m.AccountDetailsModal })));
 
 const NO_DRAG_SELECTOR = [
   "button",
@@ -399,9 +401,17 @@ function App() {
                   <SettingsView onSave={handleSaveConfig} />
                 )}
 
-                {sidebarView === "store" && <StoreView />}
+                {sidebarView === "store" && (
+                  <Suspense fallback={<div className="loading-view">Loading store...</div>}>
+                    <StoreView />
+                  </Suspense>
+                )}
 
-                {sidebarView === "logs" && <LogsView />}
+                {sidebarView === "logs" && (
+                  <Suspense fallback={<div className="loading-view">Loading logs...</div>}>
+                    <LogsView />
+                  </Suspense>
+                )}
               </ErrorBoundary>
             </div>
           </main>
@@ -460,14 +470,16 @@ function App() {
           onClose={() => setActiveModal(null)}
         />
 
-        <AccountDetailsModal
-          open={activeModal === "account-details"}
-          accountId={selectedAccountForDetails}
-          onClose={() => {
-            setActiveModal(null);
-            setSelectedAccountForDetails(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <AccountDetailsModal
+            open={activeModal === "account-details"}
+            accountId={selectedAccountForDetails}
+            onClose={() => {
+              setActiveModal(null);
+              setSelectedAccountForDetails(null);
+            }}
+          />
+        </Suspense>
 
         {confirmState && (
           <ConfirmDialog state={confirmState} onClose={() => setConfirmState(null)} />

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail};
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, Response};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -7,6 +7,17 @@ use std::path::Path;
 const MC_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 const MC_SKINS_URL: &str = "https://api.minecraftservices.com/minecraft/profile/skins";
 const MC_CAPES_ACTIVE_URL: &str = "https://api.minecraftservices.com/minecraft/profile/capes/active";
+
+/// Check response status and return error with body if failed
+fn check_response(resp: Response, context: &str) -> Result<()> {
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        let status = resp.status();
+        let body = resp.text().unwrap_or_default();
+        bail!("{context} failed: {status} - {body}")
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MinecraftProfile {
@@ -118,13 +129,7 @@ pub fn upload_skin(access_token: &str, skin_path: &Path, variant: SkinVariant) -
         .send()
         .context("failed to upload skin")?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().unwrap_or_default();
-        bail!("skin upload failed: {status} - {body}");
-    }
-
-    Ok(())
+    check_response(resp, "skin upload")
 }
 
 /// Set skin from a URL
@@ -151,13 +156,7 @@ pub fn set_skin_url(access_token: &str, url: &str, variant: SkinVariant) -> Resu
         .send()
         .context("failed to set skin from URL")?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().unwrap_or_default();
-        bail!("set skin from URL failed: {status} - {body}");
-    }
-
-    Ok(())
+    check_response(resp, "set skin from URL")
 }
 
 /// Reset skin to default (Steve/Alex based on UUID)
@@ -171,13 +170,7 @@ pub fn reset_skin(access_token: &str) -> Result<()> {
         .send()
         .context("failed to reset skin")?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().unwrap_or_default();
-        bail!("skin reset failed: {status} - {body}");
-    }
-
-    Ok(())
+    check_response(resp, "skin reset")
 }
 
 /// Set the active cape by cape ID
@@ -198,13 +191,7 @@ pub fn set_cape(access_token: &str, cape_id: &str) -> Result<()> {
         .send()
         .context("failed to set cape")?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().unwrap_or_default();
-        bail!("set cape failed: {status} - {body}");
-    }
-
-    Ok(())
+    check_response(resp, "set cape")
 }
 
 /// Hide/remove the active cape
@@ -217,13 +204,7 @@ pub fn hide_cape(access_token: &str) -> Result<()> {
         .send()
         .context("failed to hide cape")?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().unwrap_or_default();
-        bail!("hide cape failed: {status} - {body}");
-    }
-
-    Ok(())
+    check_response(resp, "hide cape")
 }
 
 /// Get the active skin for a profile, if any
@@ -236,45 +217,44 @@ pub fn get_active_cape(profile: &MinecraftProfile) -> Option<&Cape> {
     profile.capes.iter().find(|c| c.state == "ACTIVE")
 }
 
+/// Normalize UUID by removing dashes
+fn normalize_uuid(uuid: &str) -> String {
+    uuid.chars().filter(|c| *c != '-').collect()
+}
+
 /// Get skin texture URL for rendering (works for any player by UUID)
 pub fn get_skin_url(uuid: &str) -> String {
-    // Remove dashes from UUID if present
-    let uuid_clean: String = uuid.chars().filter(|c| *c != '-').collect();
-    format!(
-        "https://crafatar.com/skins/{}?overlay",
-        uuid_clean
-    )
+    format!("https://crafatar.com/skins/{}?overlay", normalize_uuid(uuid))
 }
 
 /// Get rendered avatar URL for a player
 pub fn get_avatar_url(uuid: &str, size: u32) -> String {
-    let uuid_clean: String = uuid.chars().filter(|c| *c != '-').collect();
     format!(
         "https://crafatar.com/avatars/{}?size={}&overlay",
-        uuid_clean, size
+        normalize_uuid(uuid),
+        size
     )
 }
 
 /// Get full body render URL for a player
 pub fn get_body_url(uuid: &str, size: u32) -> String {
-    let uuid_clean: String = uuid.chars().filter(|c| *c != '-').collect();
     format!(
         "https://crafatar.com/renders/body/{}?size={}&overlay",
-        uuid_clean, size
+        normalize_uuid(uuid),
+        size
     )
 }
 
 /// Get head render URL for a player (3D)
 pub fn get_head_url(uuid: &str, size: u32) -> String {
-    let uuid_clean: String = uuid.chars().filter(|c| *c != '-').collect();
     format!(
         "https://crafatar.com/renders/head/{}?size={}&overlay",
-        uuid_clean, size
+        normalize_uuid(uuid),
+        size
     )
 }
 
 /// Get cape texture URL if available
 pub fn get_cape_url(uuid: &str) -> String {
-    let uuid_clean: String = uuid.chars().filter(|c| *c != '-').collect();
-    format!("https://crafatar.com/capes/{}", uuid_clean)
+    format!("https://crafatar.com/capes/{}", normalize_uuid(uuid))
 }

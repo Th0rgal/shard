@@ -4,6 +4,7 @@ import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../Modal";
 import { Field } from "../Field";
 import type { ContentTab } from "../../types";
+import { getContentTypeLabel } from "../../utils";
 
 interface AddContentModalProps {
   open: boolean;
@@ -44,10 +45,8 @@ export function AddContentModal({ open, kind, onClose, onSubmit }: AddContentMod
     );
   };
 
-  const kindLabel = kind === "mods" ? "mod" : kind === "resourcepacks" ? "resource pack" : "shader pack";
-
   return (
-    <Modal open={open} onClose={onClose} title={`Add ${kindLabel}`}>
+    <Modal open={open} onClose={onClose} title={`Add ${getContentTypeLabel(kind)}`}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <button className="btn-secondary" onClick={handleFilePick}>Choose file…</button>
         {form.input && <div style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "rgba(255,255,255,0.6)", wordBreak: "break-all" }}>{form.input}</div>}

@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import { useAppStore } from "../store";
 import { Field } from "./Field";
-import type { StoreProject, StoreVersion, ContentTab } from "../types";
+import type { StoreProject, StoreVersion } from "../types";
+import { formatDownloads, formatFileSize } from "../utils";
 
 type StoreCategory = "mods" | "resourcepacks" | "shaderpacks";
 
@@ -92,18 +93,6 @@ export function StoreView() {
       setInstalling(null);
     }
   }, [selectedProfileId, selectedProject, category, loadProfile, notify]);
-
-  const formatDownloads = (count: number): string => {
-    if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-    if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
-    return String(count);
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
-    if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(1)} KB`;
-    return `${bytes} B`;
-  };
 
   return (
     <div className="view-transition">

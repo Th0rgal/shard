@@ -762,6 +762,16 @@ a {
   margin-right: auto;
 }
 
+/* Loading state for lazy-loaded views */
+.loading-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
 /* =============================================================================
    FORM COMPONENTS
    ============================================================================= */

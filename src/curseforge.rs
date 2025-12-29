@@ -259,7 +259,6 @@ pub enum SearchSortField {
 /// CurseForge API client
 pub struct CurseForgeClient {
     client: Client,
-    api_key: String,
 }
 
 impl CurseForgeClient {
@@ -276,10 +275,7 @@ impl CurseForgeClient {
             .build()
             .expect("failed to build HTTP client");
 
-        Self {
-            client,
-            api_key: api_key.to_string(),
-        }
+        Self { client }
     }
 
     /// Search for mods

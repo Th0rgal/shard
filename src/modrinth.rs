@@ -152,7 +152,7 @@ impl SearchFacets {
             facets.push(format!("[\"versions:{}\"]", ver));
         }
         for loader in &self.loaders {
-            facets.push(format!("[\"categories:{}\"]", loader));
+            facets.push(format!("[\"loaders:{}\"]", loader));
         }
 
         if facets.is_empty() {

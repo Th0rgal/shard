@@ -87,12 +87,17 @@ pub fn save_accounts(paths: &Paths, accounts: &Accounts) -> Result<()> {
     Ok(())
 }
 
+/// Check if account matches by UUID or username (case-insensitive)
+fn matches_account(account: &Account, id: &str, id_lower: &str) -> bool {
+    account.uuid == id || account.username.to_lowercase() == *id_lower
+}
+
 pub fn find_account_mut<'a>(accounts: &'a mut Accounts, id: &str) -> Option<&'a mut Account> {
     let id_lower = id.to_lowercase();
     accounts
         .accounts
         .iter_mut()
-        .find(|account| account.uuid == id || account.username.to_lowercase() == id_lower)
+        .find(|account| matches_account(account, id, &id_lower))
 }
 
 pub fn upsert_account(accounts: &mut Accounts, account: Account) {
@@ -109,12 +114,12 @@ pub fn upsert_account(accounts: &mut Accounts, account: Account) {
 
 pub fn remove_account(accounts: &mut Accounts, id: &str) -> bool {
     let id_lower = id.to_lowercase();
-    let mut removed_uuids = Vec::new();
-    for account in &accounts.accounts {
-        if account.uuid == id || account.username.to_lowercase() == id_lower {
-            removed_uuids.push(account.uuid.clone());
-        }
-    }
+    let removed_uuids: Vec<String> = accounts
+        .accounts
+        .iter()
+        .filter(|account| matches_account(account, id, &id_lower))
+        .map(|account| account.uuid.clone())
+        .collect();
 
     let before = accounts.accounts.len();
     accounts
@@ -133,7 +138,7 @@ pub fn set_active(accounts: &mut Accounts, id: &str) -> bool {
     if let Some(uuid) = accounts
         .accounts
         .iter()
-        .find(|account| account.uuid == id || account.username.to_lowercase() == id_lower)
+        .find(|account| matches_account(account, id, &id_lower))
         .map(|account| account.uuid.clone())
     {
         accounts.active = Some(uuid);

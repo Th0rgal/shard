@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { useAppStore } from "../store";
 import type { ContentRef, ContentTab } from "../types";
+import { getContentTypeLabel, getContentTypeLabelPlural } from "../utils";
 
 interface ProfileViewProps {
   onLaunch: () => void;
@@ -145,7 +146,7 @@ export function ProfileView({
 
       <div className="section-header" style={{ marginTop: 40 }}>
         <span>Content</span>
-        <button className="link" style={{ fontSize: 12 }} onClick={() => onAddContent(activeTab)}>+ Add {activeTab === "mods" ? "mod" : activeTab === "resourcepacks" ? "resource pack" : "shader pack"}</button>
+        <button className="link" style={{ fontSize: 12 }} onClick={() => onAddContent(activeTab)}>+ Add {getContentTypeLabel(activeTab)}</button>
       </div>
 
       <div className="content-tabs">
@@ -162,9 +163,9 @@ export function ProfileView({
 
       {contentItems.length === 0 ? (
         <div className="empty-state">
-          <h3>No {activeTab === "mods" ? "mods" : activeTab === "resourcepacks" ? "resource packs" : "shaders"} yet</h3>
+          <h3>No {getContentTypeLabelPlural(activeTab)} yet</h3>
           <p>Add your first one to get started.</p>
-          <button className="btn-secondary btn-sm" onClick={() => onAddContent(activeTab)}>Add {activeTab === "mods" ? "mod" : activeTab === "resourcepacks" ? "resource pack" : "shader pack"}</button>
+          <button className="btn-secondary btn-sm" onClick={() => onAddContent(activeTab)}>Add {getContentTypeLabel(activeTab)}</button>
         </div>
       ) : (
         <div>
