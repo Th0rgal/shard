@@ -415,7 +415,7 @@ pub fn upload_skin_cmd(id: Option<String>, path: String, variant: String) -> Res
         .find(|a| a.uuid == target || a.username.to_lowercase() == target.to_lowercase())
         .ok_or_else(|| "account not found".to_string())?;
 
-    let variant: SkinVariant = variant.parse().map_err(|e: anyhow::Error| e.to_string())?;
+    let variant: SkinVariant = variant.parse().map_err(|e| format!("{}", e))?;
     upload_skin(&account.minecraft.access_token, &PathBuf::from(path), variant)
         .map_err(|e| e.to_string())
 }
@@ -432,7 +432,7 @@ pub fn set_skin_url_cmd(id: Option<String>, url: String, variant: String) -> Res
         .find(|a| a.uuid == target || a.username.to_lowercase() == target.to_lowercase())
         .ok_or_else(|| "account not found".to_string())?;
 
-    let variant: SkinVariant = variant.parse().map_err(|e: anyhow::Error| e.to_string())?;
+    let variant: SkinVariant = variant.parse().map_err(|e| format!("{}", e))?;
     set_skin_url(&account.minecraft.access_token, &url, variant)
         .map_err(|e| e.to_string())
 }
