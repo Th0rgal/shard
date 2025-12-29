@@ -49,16 +49,13 @@ pub struct Cape {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum SkinVariant {
+    #[default]
     Classic,
     Slim,
 }
 
-impl Default for SkinVariant {
-    fn default() -> Self {
-        SkinVariant::Classic
-    }
-}
 
 impl std::fmt::Display for SkinVariant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -28,31 +28,28 @@ pub fn load_config(paths: &Paths) -> Result<Config> {
         if !value.trim().is_empty() {
             config.msa_client_id = Some(value);
         }
-    } else if let Ok(value) = std::env::var("MICROSOFT_CLIENT_ID") {
-        if !value.trim().is_empty() {
+    } else if let Ok(value) = std::env::var("MICROSOFT_CLIENT_ID")
+        && !value.trim().is_empty() {
             config.msa_client_id = Some(value);
         }
-    }
 
     if let Ok(value) = std::env::var("SHARD_MS_CLIENT_SECRET") {
         if !value.trim().is_empty() {
             config.msa_client_secret = Some(value);
         }
-    } else if let Ok(value) = std::env::var("MICROSOFT_CLIENT_SECRET") {
-        if !value.trim().is_empty() {
+    } else if let Ok(value) = std::env::var("MICROSOFT_CLIENT_SECRET")
+        && !value.trim().is_empty() {
             config.msa_client_secret = Some(value);
         }
-    }
 
     if let Ok(value) = std::env::var("SHARD_CURSEFORGE_API_KEY") {
         if !value.trim().is_empty() {
             config.curseforge_api_key = Some(value);
         }
-    } else if let Ok(value) = std::env::var("CURSEFORGE_API_KEY") {
-        if !value.trim().is_empty() {
+    } else if let Ok(value) = std::env::var("CURSEFORGE_API_KEY")
+        && !value.trim().is_empty() {
             config.curseforge_api_key = Some(value);
         }
-    }
 
     Ok(config)
 }

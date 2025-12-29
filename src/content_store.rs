@@ -255,7 +255,7 @@ impl ContentStore {
         options: &SearchOptions,
     ) -> Result<Vec<ContentItem>> {
         let class_id = options.content_type.map(|ct| ct.to_curseforge_class());
-        let mod_loader = options.loader.as_deref().map(ModLoaderType::from_str);
+        let mod_loader = options.loader.as_deref().map(ModLoaderType::parse);
         let limit = if options.limit > 0 { options.limit } else { 20 };
 
         let result = cf.search(
@@ -420,7 +420,7 @@ impl ContentStore {
                     .as_ref()
                     .context("CurseForge not configured")?;
                 let mod_id: u32 = id.parse().context("invalid CurseForge mod ID")?;
-                let mod_loader = loader.map(ModLoaderType::from_str);
+                let mod_loader = loader.map(ModLoaderType::parse);
 
                 let files = cf.get_mod_files(mod_id, game_version, mod_loader, 50, 0)?;
 

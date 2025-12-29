@@ -32,12 +32,14 @@ pub struct LogEntry {
 /// Log level
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum LogLevel {
     Debug,
     Info,
     Warn,
     Error,
     Fatal,
+    #[default]
     Unknown,
 }
 
@@ -54,11 +56,6 @@ impl std::fmt::Display for LogLevel {
     }
 }
 
-impl Default for LogLevel {
-    fn default() -> Self {
-        LogLevel::Unknown
-    }
-}
 
 /// Log file information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,13 +108,13 @@ pub fn parse_log_line(line: &str, line_number: u64) -> LogEntry {
     let raw = line.to_string();
 
     // Try to parse the standard format
-    if let Some(rest) = line.strip_prefix('[') {
-        if let Some(time_end) = rest.find(']') {
+    if let Some(rest) = line.strip_prefix('[')
+        && let Some(time_end) = rest.find(']') {
             let timestamp = Some(rest[..time_end].to_string());
             let after_time = &rest[time_end + 1..].trim_start();
 
-            if let Some(rest2) = after_time.strip_prefix('[') {
-                if let Some(bracket_end) = rest2.find(']') {
+            if let Some(rest2) = after_time.strip_prefix('[')
+                && let Some(bracket_end) = rest2.find(']') {
                     let thread_level = &rest2[..bracket_end];
                     let message_start = &rest2[bracket_end + 1..];
 
@@ -155,9 +152,7 @@ pub fn parse_log_line(line: &str, line_number: u64) -> LogEntry {
                         line_number,
                     };
                 }
-            }
         }
-    }
 
     // Fallback: treat entire line as message
     LogEntry {
@@ -343,11 +338,9 @@ impl LogWatcher {
         let reader = BufReader::new(&file);
         let mut entries = Vec::new();
 
-        for line in reader.lines() {
-            if let Ok(line) = line {
-                self.line_number += 1;
-                entries.push(parse_log_line(&line, self.line_number));
-            }
+        for line in reader.lines().map_while(Result::ok) {
+            self.line_number += 1;
+            entries.push(parse_log_line(&line, self.line_number));
         }
 
         // Update position
@@ -372,13 +365,11 @@ pub fn watch_log(path: PathBuf, poll_interval: Duration) -> (Receiver<Vec<LogEnt
             }
 
             // Read new entries
-            if let Ok(entries) = watcher.read_new() {
-                if !entries.is_empty() {
-                    if tx.send(entries).is_err() {
+            if let Ok(entries) = watcher.read_new()
+                && !entries.is_empty()
+                    && tx.send(entries).is_err() {
                         break;
                     }
-                }
-            }
 
             thread::sleep(poll_interval);
         }
@@ -441,11 +432,9 @@ pub fn format_entry(entry: &LogEntry, colored: bool) -> String {
         } else {
             format!("{}{}{}", level_color, entry.message, reset)
         }
+    } else if let Some(ts) = &entry.timestamp {
+        format!("[{}] [{}] {}", ts, entry.level, entry.message)
     } else {
-        if let Some(ts) = &entry.timestamp {
-            format!("[{}] [{}] {}", ts, entry.level, entry.message)
-        } else {
-            entry.message.clone()
-        }
+        entry.message.clone()
     }
 }

@@ -43,6 +43,7 @@ pub struct ContentRef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Runtime {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub java: Option<String>,
@@ -52,15 +53,6 @@ pub struct Runtime {
     pub args: Vec<String>,
 }
 
-impl Default for Runtime {
-    fn default() -> Self {
-        Self {
-            java: None,
-            memory: None,
-            args: Vec::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Files {

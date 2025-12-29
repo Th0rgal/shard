@@ -6,6 +6,7 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct Accounts {
     #[serde(default)]
     pub active: Option<String>,
@@ -13,14 +14,6 @@ pub struct Accounts {
     pub accounts: Vec<Account>,
 }
 
-impl Default for Accounts {
-    fn default() -> Self {
-        Self {
-            active: None,
-            accounts: Vec::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
@@ -125,11 +118,10 @@ pub fn remove_account(accounts: &mut Accounts, id: &str) -> bool {
     accounts
         .accounts
         .retain(|account| !removed_uuids.contains(&account.uuid));
-    if let Some(active) = accounts.active.as_deref() {
-        if removed_uuids.iter().any(|uuid| uuid == active) {
+    if let Some(active) = accounts.active.as_deref()
+        && removed_uuids.iter().any(|uuid| uuid == active) {
             accounts.active = None;
         }
-    }
     before != accounts.accounts.len()
 }
 

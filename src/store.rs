@@ -103,7 +103,7 @@ pub fn store_from_url(paths: &Paths, url: &str) -> Result<(PathBuf, String)> {
     let parsed = Url::parse(url).context("invalid url")?;
     let file_name = parsed
         .path_segments()
-        .and_then(|segments| segments.last())
+        .and_then(|mut segments| segments.next_back())
         .filter(|name| !name.is_empty())
         .unwrap_or("download.zip");
 

@@ -73,11 +73,10 @@ pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Res
 
     let (mut jvm_args, game_args) = build_args(&version, &vars)?;
 
-    if let Some(memory) = &profile.runtime.memory {
-        if !jvm_args.iter().any(|arg| arg.starts_with("-Xmx")) {
+    if let Some(memory) = &profile.runtime.memory
+        && !jvm_args.iter().any(|arg| arg.starts_with("-Xmx")) {
             jvm_args.push(format!("-Xmx{memory}"));
         }
-    }
 
     if !profile.runtime.args.is_empty() {
         jvm_args.extend(profile.runtime.args.iter().cloned());
@@ -348,8 +347,8 @@ fn ensure_libraries(
             classpath.push(lib_path);
         }
 
-        if let Some(natives) = library.natives.as_ref() {
-            if let Some(classifier) = natives.get(&os_key()) {
+        if let Some(natives) = library.natives.as_ref()
+            && let Some(classifier) = natives.get(&os_key()) {
                 let classifier = classifier.replace("${arch}", arch_marker());
                 if let Some(native_artifact) = library
                     .downloads
@@ -374,7 +373,6 @@ fn ensure_libraries(
                     extract_natives(&jar_path, &natives_dir, library.extract.as_ref())?;
                 }
             }
-        }
     }
 
     for jar in client_jars {
@@ -539,11 +537,10 @@ fn download_json(url: &str) -> Result<Value> {
 fn download_with_sha1(url: &str, path: &Path, expected_sha1: Option<&str>) -> Result<()> {
     if path.exists() {
         if let Some(expected) = expected_sha1 {
-            if let Ok(actual) = sha1_file(path) {
-                if actual.eq_ignore_ascii_case(expected) {
+            if let Ok(actual) = sha1_file(path)
+                && actual.eq_ignore_ascii_case(expected) {
                     return Ok(());
                 }
-            }
         } else if path.metadata().map(|m| m.len()).unwrap_or(0) > 0 {
             return Ok(());
         }
@@ -611,13 +608,11 @@ fn extract_natives(path: &Path, dest: &Path, extract: Option<&Extract>) -> Resul
         if entry.is_dir() {
             continue;
         }
-        if let Some(extract) = extract {
-            if let Some(excludes) = &extract.exclude {
-                if excludes.iter().any(|prefix| entry_name.starts_with(prefix)) {
+        if let Some(extract) = extract
+            && let Some(excludes) = &extract.exclude
+                && excludes.iter().any(|prefix| entry_name.starts_with(prefix)) {
                     continue;
                 }
-            }
-        }
 
         // Protect against Zip Slip: validate path doesn't escape destination
         let out_path = dest.join(&enclosed);
@@ -799,16 +794,14 @@ struct OsRule {
 impl Rule {
     fn matches(&self, ctx: &RuleContext) -> bool {
         if let Some(os) = &self.os {
-            if let Some(name) = &os.name {
-                if name != &ctx.os_name {
+            if let Some(name) = &os.name
+                && name != &ctx.os_name {
                     return false;
                 }
-            }
-            if let Some(arch) = &os.arch {
-                if !ctx.os_arch.contains(arch) {
+            if let Some(arch) = &os.arch
+                && !ctx.os_arch.contains(arch) {
                     return false;
                 }
-            }
         }
         if let Some(features) = &self.features {
             for (key, value) in features {

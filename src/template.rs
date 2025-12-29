@@ -149,11 +149,10 @@ pub fn list_templates(paths: &Paths) -> Result<Vec<String>> {
     {
         let entry = entry.context("failed to read templates dir entry")?;
         let path = entry.path();
-        if path.extension().map(|e| e == "json").unwrap_or(false) {
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+        if path.extension().map(|e| e == "json").unwrap_or(false)
+            && let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 ids.push(stem.to_string());
             }
-        }
     }
     ids.sort();
     Ok(ids)

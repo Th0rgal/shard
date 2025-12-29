@@ -1191,19 +1191,14 @@ fn handle_logs_command(paths: &Paths, command: LogsCommand) -> Result<()> {
 
             let (rx, _stop) = watch_log(log_path, Duration::from_millis(100));
 
-            loop {
-                match rx.recv() {
-                    Ok(entries) => {
-                        for entry in entries {
-                            if let Some(min) = min_level {
-                                if level_priority(entry.level) < level_priority(min) {
-                                    continue;
-                                }
-                            }
-                            println!("{}", format_entry(&entry, colored));
-                        }
+            while let Ok(entries) = rx.recv() {
+                for entry in entries {
+                    if let Some(min) = min_level
+                        && level_priority(entry.level) < level_priority(min)
+                    {
+                        continue;
                     }
-                    Err(_) => break,
+                    println!("{}", format_entry(&entry, colored));
                 }
             }
         }
