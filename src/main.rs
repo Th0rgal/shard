@@ -554,10 +554,11 @@ fn resolve_launch_account(paths: &Paths, account_id: Option<String>) -> Result<L
     save_accounts(paths, &accounts)?;
 
     // Refresh Minecraft token if expired
-    let updated_account = {
+    let (updated_account, old_uuid) = {
         let account = find_account_mut(&mut accounts, &target)
             .with_context(|| format!("account not found: {target}"))?;
 
+        let old_uuid = account.uuid.clone();
         if account.minecraft.is_expired() {
             let minecraft_auth = exchange_for_minecraft(&account.msa.access_token)?;
             account.minecraft = MinecraftTokens {
@@ -569,10 +570,11 @@ fn resolve_launch_account(paths: &Paths, account_id: Option<String>) -> Result<L
             account.uuid = minecraft_auth.uuid;
         }
 
-        account.clone()
+        (account.clone(), old_uuid)
     };
 
-    if accounts.active.is_none() {
+    // Update active account reference if UUID changed or not set
+    if accounts.active.is_none() || accounts.active.as_deref() == Some(&old_uuid) {
         accounts.active = Some(updated_account.uuid.clone());
     }
     save_accounts(paths, &accounts)?;

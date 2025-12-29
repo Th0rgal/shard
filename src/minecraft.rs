@@ -615,10 +615,26 @@ fn extract_natives(path: &Path, dest: &Path, extract: Option<&Extract>) -> Resul
             }
         }
 
+        // Protect against Zip Slip: validate path doesn't escape destination
         let out_path = dest.join(name);
+        let canonical_dest = dest
+            .canonicalize()
+            .with_context(|| format!("failed to canonicalize dest: {}", dest.display()))?;
+        // Create parent dirs first so we can canonicalize the output path
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("failed to create native dir: {}", parent.display()))?;
+        }
+        let canonical_out = out_path
+            .parent()
+            .and_then(|p| p.canonicalize().ok())
+            .map(|p| p.join(out_path.file_name().unwrap_or_default()))
+            .unwrap_or_else(|| out_path.clone());
+        if !canonical_out.starts_with(&canonical_dest) {
+            bail!(
+                "zip entry '{}' would escape destination directory (Zip Slip attack)",
+                name
+            );
         }
         let mut out = fs::File::create(&out_path)
             .with_context(|| format!("failed to create native file: {}", out_path.display()))?;
