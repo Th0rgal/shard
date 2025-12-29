@@ -5,16 +5,18 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+atty = "0.2.14"
 clap = { version = "4.5.53", features = ["derive"] }
 dirs = "6.0.0"
 dotenvy = "0.15.7"
 hex = "0.4.3"
-reqwest = { version = "0.12.28", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.12.28", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.148"
 sha1 = "0.10.6"
 sha2 = "0.10.9"
 shell-words = "1.1.1"
+urlencoding = "2.1.3"
 zip = "7.0.0"
 
 # Fast builds for development/testing (default)

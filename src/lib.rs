@@ -1,10 +1,16 @@
 pub mod accounts;
 pub mod auth;
 pub mod config;
+pub mod content_store;
+pub mod curseforge;
 pub mod instance;
+pub mod logs;
 pub mod minecraft;
+pub mod modrinth;
 pub mod ops;
 pub mod paths;
 pub mod profile;
+pub mod skin;
 pub mod store;
+pub mod template;
 pub mod util;
