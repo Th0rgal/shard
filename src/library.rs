@@ -149,6 +149,10 @@ impl Library {
         let conn = Connection::open(path)
             .with_context(|| format!("failed to open library database: {}", path.display()))?;
 
+        // Enable foreign key constraints (SQLite requires this per-connection)
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .context("failed to enable foreign key constraints")?;
+
         let library = Self { conn };
         library.init_schema()?;
         Ok(library)
@@ -223,7 +227,7 @@ impl Library {
             input
                 .file_name
                 .clone()
-                .unwrap_or_else(|| format!("item-{}", &hash[..8]))
+                .unwrap_or_else(|| format!("item-{}", hash.get(..8).unwrap_or(&hash)))
         });
 
         self.conn.execute(
@@ -893,10 +897,11 @@ impl Library {
 
                 // Add to library
                 let metadata = fs::metadata(&path)?;
+                let hash_prefix = hash.get(..8).unwrap_or(hash);
                 match self.add_item(&LibraryItemInput {
                     hash: hash.to_string(),
                     content_type: Some(content_type.as_str().to_string()),
-                    name: Some(format!("{}-{}", content_type.as_str(), &hash[..8])),
+                    name: Some(format!("{}-{}", content_type.as_str(), hash_prefix)),
                     file_size: Some(metadata.len() as i64),
                     source_platform: Some("store".to_string()),
                     ..Default::default()

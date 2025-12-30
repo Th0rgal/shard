@@ -457,10 +457,40 @@ fn collect_common_candidates(candidates: &mut Vec<PathBuf>) {
     }
 }
 
+/// Check if a version string is a snapshot (e.g., "24w14a", "23w51b")
+fn is_snapshot_version(version: &str) -> bool {
+    // Snapshot format: YYwWWx where YY is year, WW is week, x is letter
+    // Examples: 24w14a, 23w51b, 24w06a
+    if version.len() >= 5 && version.contains('w') {
+        let parts: Vec<&str> = version.split('w').collect();
+        if parts.len() == 2 {
+            // Check if first part is a 2-digit year
+            if let Some(year) = parts[0].parse::<u32>().ok() {
+                // Year should be reasonable (20-30 for 2020-2030 era snapshots)
+                return year >= 11 && year <= 99;
+            }
+        }
+    }
+    false
+}
+
 /// Compare two Minecraft version strings.
 /// Returns: -1 if a < b, 0 if a == b, 1 if a > b
 fn compare_mc_versions(a: &str, b: &str) -> i32 {
+    // Handle snapshot versions - treat them as "latest" (very high version)
+    // This ensures snapshots get modern Java requirements
     let parse = |s: &str| -> (u32, u32, u32) {
+        if is_snapshot_version(s) {
+            // Extract year from snapshot (e.g., "24" from "24w14a")
+            // Map to a high version number so it gets modern Java
+            // 24wXXx -> treat as ~1.24.0 (higher than any release)
+            if let Some(year) = s.split('w').next().and_then(|y| y.parse::<u32>().ok()) {
+                return (1, year, 99);
+            }
+            // Fallback: treat as very recent version
+            return (1, 99, 0);
+        }
+
         let parts: Vec<&str> = s.split('.').collect();
         let major = parts.first().and_then(|p| p.parse().ok()).unwrap_or(0);
         let minor = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(0);
