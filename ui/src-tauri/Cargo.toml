@@ -21,6 +21,7 @@ tauri-plugin-dialog = "~2.0.2"
 tauri-plugin-opener = "~2.2.6"
 
 shard = { path = "../.." }
+reqwest = { version = "0.12.28", features = ["blocking"] }
 
 # Fast builds for development/testing (default)
 # Use: cargo tauri dev (uses dev profile automatically)
