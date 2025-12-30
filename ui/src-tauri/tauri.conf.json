@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.2",
-  "productName": "Shard",
+  "productName": "Shard Launcher",
   "version": "0.1.0",
   "identifier": "sh.shard.launcher",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Shard",
+        "title": "Shard Launcher",
         "width": 1280,
         "height": 760,
         "resizable": true,
