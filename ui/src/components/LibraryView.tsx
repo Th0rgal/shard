@@ -179,7 +179,7 @@ export function LibraryView() {
 
   const handleDeleteItem = async (item: LibraryItem) => {
     try {
-      await invoke("library_delete_item_cmd", { id: item.id, delete_file: false });
+      await invoke("library_delete_item_cmd", { id: item.id, deleteFile: false });
       setSelectedItem(null);
       await Promise.all([loadItems(), loadStats()]);
       notify("Removed", `${formatContentName(item.name)} removed from library`);
@@ -209,7 +209,7 @@ export function LibraryView() {
   };
 
   return (
-    <div className="view-transition" style={{ marginRight: -40, paddingRight: 40 }}>
+    <div className="view-transition">
       {/* Category tabs */}
       <div className="content-tabs" style={{ marginBottom: 16 }}>
         {(Object.keys(CATEGORY_LABELS) as LibraryCategory[]).map((cat) => (

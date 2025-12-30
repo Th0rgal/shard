@@ -105,14 +105,14 @@ export function SkinViewer({
     backLight.position.set(-50, 50, -50);
     scene.add(backLight);
 
-    // Controls
+    // Controls - user can drag to rotate the view
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableZoom = false;
     controls.enablePan = false;
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 1.5;
+    controls.autoRotate = false; // Let user control with mouse
+    controls.rotateSpeed = 0.8;
     controls.target.set(0, 16, 0);
     controls.minPolarAngle = Math.PI * 0.2;
     controls.maxPolarAngle = Math.PI * 0.8;

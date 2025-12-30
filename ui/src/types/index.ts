@@ -4,6 +4,10 @@ export type ContentRef = {
   version?: string | null;
   source?: string | null;
   file_name?: string | null;
+  platform?: string | null;
+  project_id?: string | null;
+  version_id?: string | null;
+  pinned?: boolean;
 };
 
 export type Loader = {
@@ -41,6 +45,7 @@ export type Accounts = {
 export type Config = {
   msa_client_id?: string | null;
   msa_client_secret?: string | null;
+  auto_update_enabled?: boolean;
 };
 
 export type DeviceCode = {
@@ -99,7 +104,7 @@ export type ModalType =
   | "logs"
   | "store";
 
-export type SidebarView = "profiles" | "accounts" | "store" | "logs" | "library";
+export type SidebarView = "profiles" | "accounts" | "store" | "logs" | "library" | "settings";
 
 // Profile folder organization (UI-only, stored in localStorage)
 export type ProfileFolder = {
@@ -316,6 +321,38 @@ export type LibraryStats = {
 
 export type LibraryImportResult = {
   added: number;
+  skipped: number;
+  errors: string[];
+};
+
+// Storage statistics types
+export type StorageStats = {
+  total_bytes: number;
+  mods_bytes: number;
+  resourcepacks_bytes: number;
+  shaderpacks_bytes: number;
+  skins_bytes: number;
+  minecraft_bytes: number;
+  database_bytes: number;
+  unique_items: number;
+  total_references: number;
+  deduplication_savings: number;
+};
+
+// Update checking types
+export type ContentUpdate = {
+  profile_id: string;
+  content: ContentRef;
+  content_type: string;
+  current_version?: string | null;
+  latest_version: string;
+  latest_version_id: string;
+  changelog?: string | null;
+};
+
+export type UpdateCheckResult = {
+  updates: ContentUpdate[];
+  checked: number;
   skipped: number;
   errors: string[];
 };

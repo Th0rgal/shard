@@ -220,7 +220,7 @@ export function AccountDetailsModal({ open: isOpen, accountId, onClose }: Accoun
               capeUrl={activeCapeUrl}
               width={200}
               height={320}
-              animation="idle"
+              animation="mixed"
             />
           </div>
 

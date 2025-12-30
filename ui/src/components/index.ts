@@ -12,5 +12,7 @@ export { SkinViewer } from "./SkinViewer";
 export { StoreView } from "./StoreView";
 export { LogsView } from "./LogsView";
 export { LibraryView } from "./LibraryView";
+export { PlatformIcon, PlatformBadge, PLATFORM_COLORS } from "./PlatformIcon";
+export type { Platform } from "./PlatformIcon";
 
 export * from "./modals";

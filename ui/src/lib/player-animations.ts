@@ -8,12 +8,18 @@ export type AnimationType =
   | "fly"
   | "wave"
   | "crouch"
+  | "sit"
+  | "mixed"
   | "none";
 
 export interface AnimationState {
   type: AnimationType;
   speed: number;
   time: number;
+  // For mixed animation - track current sub-animation and transition
+  mixedPhase?: "idle" | "walk" | "sit" | "crouch" | "wave";
+  mixedPhaseTime?: number;
+  mixedPhaseDuration?: number;
 }
 
 // Easing functions
@@ -217,6 +223,111 @@ const updateFly: AnimationUpdater = (parts, cape, state, delta) => {
   parts.body.position.y = flyY + float;
 };
 
+// Sitting animation - legs bent, sitting on invisible surface
+const updateSit: AnimationUpdater = (parts, cape, state, delta) => {
+  state.time += delta * state.speed;
+  const t = state.time;
+
+  // Legs bent at 90 degrees (sitting)
+  parts.rightLeg.rotation.x = -Math.PI * 0.5;
+  parts.leftLeg.rotation.x = -Math.PI * 0.5;
+
+  // Lower body position for sitting
+  const sitY = DEFAULT_BODY_Y - 6;
+  parts.body.position.y = sitY;
+  parts.body.rotation.x = 0;
+
+  // Arms resting on legs
+  parts.rightArm.rotation.x = -0.4;
+  parts.leftArm.rotation.x = -0.4;
+  parts.rightArm.rotation.z = 0.15;
+  parts.leftArm.rotation.z = -0.15;
+
+  // Relaxed head movement - looking around
+  parts.head.rotation.y = Math.sin(t * 0.4) * 0.2;
+  parts.head.rotation.x = Math.sin(t * 0.6) * 0.1;
+
+  // Subtle breathing
+  const breathe = Math.sin(t * 1.2) * 0.015;
+  parts.body.position.y = sitY + breathe * 3;
+
+  // Cape drapes
+  if (cape) {
+    cape.group.rotation.x = Math.PI * 0.02 + Math.sin(t * 0.5) * 0.02;
+  }
+};
+
+// Mixed animation - cycles through different poses
+const MIXED_PHASES: Array<"idle" | "walk" | "sit" | "crouch" | "wave"> = [
+  "idle",
+  "walk",
+  "idle",
+  "sit",
+  "idle",
+  "crouch",
+  "idle",
+  "wave",
+];
+
+const updateMixed: AnimationUpdater = (parts, cape, state, delta) => {
+  state.time += delta * state.speed;
+
+  // Initialize mixed state if needed
+  if (state.mixedPhase === undefined) {
+    state.mixedPhase = MIXED_PHASES[0];
+    state.mixedPhaseTime = 0;
+    state.mixedPhaseDuration = 3 + Math.random() * 2; // 3-5 seconds
+  }
+
+  // Update phase time
+  state.mixedPhaseTime! += delta * state.speed;
+
+  // Check if it's time to switch phases
+  if (state.mixedPhaseTime! >= state.mixedPhaseDuration!) {
+    // Move to next phase
+    const currentIndex = MIXED_PHASES.indexOf(state.mixedPhase!);
+    const nextIndex = (currentIndex + 1) % MIXED_PHASES.length;
+    state.mixedPhase = MIXED_PHASES[nextIndex];
+    state.mixedPhaseTime = 0;
+    // Vary duration: walk/sit take longer, wave/crouch are shorter
+    if (state.mixedPhase === "walk") {
+      state.mixedPhaseDuration = 4 + Math.random() * 2;
+    } else if (state.mixedPhase === "sit") {
+      state.mixedPhaseDuration = 5 + Math.random() * 3;
+    } else if (state.mixedPhase === "wave" || state.mixedPhase === "crouch") {
+      state.mixedPhaseDuration = 2 + Math.random() * 1.5;
+    } else {
+      state.mixedPhaseDuration = 2 + Math.random() * 2;
+    }
+  }
+
+  // Create a temporary state for the sub-animation
+  const subState: AnimationState = {
+    type: state.mixedPhase!,
+    speed: state.speed,
+    time: state.time,
+  };
+
+  // Run the appropriate sub-animation
+  switch (state.mixedPhase) {
+    case "idle":
+      updateIdle(parts, cape, subState, 0);
+      break;
+    case "walk":
+      updateWalk(parts, cape, subState, 0);
+      break;
+    case "sit":
+      updateSit(parts, cape, subState, 0);
+      break;
+    case "crouch":
+      updateCrouch(parts, cape, subState, 0);
+      break;
+    case "wave":
+      updateWave(parts, cape, subState, 0);
+      break;
+  }
+};
+
 // Animation registry
 const animations: Record<AnimationType, AnimationUpdater | null> = {
   idle: updateIdle,
@@ -225,6 +336,8 @@ const animations: Record<AnimationType, AnimationUpdater | null> = {
   wave: updateWave,
   crouch: updateCrouch,
   fly: updateFly,
+  sit: updateSit,
+  mixed: updateMixed,
   none: null,
 };
 

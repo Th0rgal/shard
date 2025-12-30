@@ -15,4 +15,5 @@ pub mod profile;
 pub mod skin;
 pub mod store;
 pub mod template;
+pub mod updates;
 pub mod util;

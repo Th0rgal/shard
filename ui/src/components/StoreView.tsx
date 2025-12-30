@@ -20,7 +20,10 @@ interface StoreSearchInput {
   game_version?: string | null;
   loader?: string | null;
   limit?: number;
+  platform?: string | null;
 }
+
+type StorePlatform = "all" | "modrinth" | "curseforge";
 
 // Module-level cache for popular results (persists across re-renders)
 const popularCache: Record<StoreCategory, StoreProject[]> = {
@@ -38,6 +41,7 @@ export function StoreView() {
   const { profile, selectedProfileId, loadProfile, notify } = useAppStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<StoreCategory>("mods");
+  const [platform, setPlatform] = useState<StorePlatform>("all");
   const [searchResults, setSearchResults] = useState<StoreProject[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedProject, setSelectedProject] = useState<StoreProject | null>(null);
@@ -95,6 +99,7 @@ export function StoreView() {
         game_version: profile?.mcVersion ?? null,
         loader: profile?.loader?.type ?? null,
         limit: 20,
+        platform: platform === "all" ? null : platform,
       };
       const data = await invoke<StoreProject[]>("store_search_cmd", { input });
       setSearchResults(data);
@@ -103,7 +108,7 @@ export function StoreView() {
     } finally {
       setLoading(false);
     }
-  }, [query, category, profile, notify]);
+  }, [query, category, platform, profile, notify]);
 
   const handleCategoryChange = useCallback((newCategory: StoreCategory) => {
     setCategory(newCategory);
@@ -157,7 +162,7 @@ export function StoreView() {
   }, [selectedProfileId, selectedProject, category, loadProfile, notify]);
 
   return (
-    <div className="view-transition" style={{ marginRight: -40, paddingRight: 40 }}>
+    <div className="view-transition">
       {/* Category tabs */}
       <div className="content-tabs" style={{ marginBottom: 16 }}>
         <button
@@ -191,6 +196,16 @@ export function StoreView() {
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
           style={{ flex: 1 }}
         />
+        <select
+          className="select"
+          value={platform}
+          onChange={(e) => setPlatform(e.target.value as StorePlatform)}
+          style={{ width: 130 }}
+        >
+          <option value="all">All platforms</option>
+          <option value="modrinth">Modrinth</option>
+          <option value="curseforge">CurseForge</option>
+        </select>
         <button
           className="btn btn-primary"
           onClick={handleSearch}

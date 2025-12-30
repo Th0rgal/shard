@@ -40,6 +40,22 @@ pub struct ContentRef {
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_name: Option<String>,
+    /// Platform this content was installed from (modrinth, curseforge, local)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    /// Project ID on the platform (for update checking)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
+    /// Version ID on the platform (for update checking)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<String>,
+    /// If true, this content is pinned and won't be auto-updated
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pinned: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

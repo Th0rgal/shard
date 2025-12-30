@@ -1,7 +1,163 @@
 import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
+import {
+  DndContext,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { useAppStore } from "../store";
 import type { ProfileFolder } from "../types";
+
+// Draggable profile item component
+function DraggableProfileItem({
+  id,
+  isSelected,
+  isFavorite,
+  inFolder,
+  onSelect,
+  onContextMenu,
+}: {
+  id: string;
+  isSelected: boolean;
+  isFavorite: boolean;
+  inFolder: boolean;
+  onSelect: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `profile-${id}`,
+    data: { type: "profile", profileId: id },
+  });
+
+  return (
+    <button
+      ref={setNodeRef}
+      className={clsx(
+        "profile-dropdown-item",
+        isSelected && "active",
+        inFolder && "indented",
+        isDragging && "dragging"
+      )}
+      onClick={onSelect}
+      onContextMenu={onContextMenu}
+      data-tauri-drag-region="false"
+      {...attributes}
+      {...listeners}
+    >
+      {isFavorite && (
+        <svg className="profile-dropdown-star" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+          <path d="M6 1l1.545 3.13 3.455.502-2.5 2.436.59 3.441L6 8.885 2.91 10.51l.59-3.441L1 4.632l3.455-.502L6 1z" />
+        </svg>
+      )}
+      <span className="profile-dropdown-name">{id}</span>
+      {isSelected && (
+        <svg className="profile-dropdown-check" width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+// Droppable folder component
+function DroppableFolder({
+  folder,
+  isEditing,
+  editingName,
+  onEditChange,
+  onFinishRename,
+  onCancelRename,
+  onToggleCollapse,
+  onContextMenu,
+  onStartEdit,
+  children,
+}: {
+  folder: ProfileFolder;
+  isEditing: boolean;
+  editingName: string;
+  onEditChange: (name: string) => void;
+  onFinishRename: () => void;
+  onCancelRename: () => void;
+  onToggleCollapse: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onStartEdit: () => void;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `folder-${folder.id}`,
+    data: { type: "folder", folderId: folder.id },
+  });
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && folderInputRef.current) {
+      folderInputRef.current.focus();
+      folderInputRef.current.select();
+    }
+  }, [isEditing]);
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={clsx("profile-dropdown-folder", isOver && "drop-target")}
+    >
+      <button
+        className="profile-dropdown-folder-header"
+        onClick={onToggleCollapse}
+        onContextMenu={onContextMenu}
+        onDoubleClick={onStartEdit}
+        data-tauri-drag-region="false"
+      >
+        <svg className={clsx("profile-dropdown-chevron", !folder.collapsed && "expanded")} width="10" height="10" viewBox="0 0 10 10">
+          <path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+        </svg>
+        {isEditing ? (
+          <input
+            ref={folderInputRef}
+            className="profile-dropdown-folder-input"
+            value={editingName}
+            onChange={(e) => onEditChange(e.target.value)}
+            onBlur={onFinishRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onFinishRename();
+              if (e.key === "Escape") onCancelRename();
+            }}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Folder name"
+          />
+        ) : (
+          <span className="profile-dropdown-folder-name">{folder.name || "New Folder"}</span>
+        )}
+        <span className="profile-dropdown-folder-count">{folder.profiles.length}</span>
+      </button>
+      {!folder.collapsed && (
+        <div className="profile-dropdown-folder-contents">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Droppable zone for ungrouped items
+function DroppableUngrouped({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: "ungrouped",
+    data: { type: "ungrouped" },
+  });
+
+  return (
+    <div ref={setNodeRef} className={clsx("profile-dropdown-ungrouped", isOver && "drop-target")}>
+      {children}
+    </div>
+  );
+}
 
 interface SidebarProps {
   onCreateProfile: () => void;
@@ -36,23 +192,30 @@ export function Sidebar({
     deleteFolder,
     toggleFolderCollapsed,
     moveProfileToFolder,
-    reorderProfileInFolder,
     setFavoriteProfile,
     loadProfileOrganization,
     syncProfileOrganization,
   } = useAppStore();
 
   const activeAccount = getActiveAccount();
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [draggedProfileId, setDraggedProfileId] = useState<string | null>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  // Drag and drop state
-  const [draggedProfile, setDraggedProfile] = useState<string | null>(null);
-  const [dragOverTarget, setDragOverTarget] = useState<{ type: "folder" | "profile" | "ungrouped"; id: string; position?: "before" | "after" } | null>(null);
+  // Configure drag sensors with activation constraint to distinguish from clicks
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement required to start drag
+      },
+    })
+  );
 
   // Load organization on mount and sync when profiles change
   useEffect(() => {
@@ -66,6 +229,9 @@ export function Sidebar({
   // Close menus on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setShowProfileMenu(false);
+      }
       if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
         setShowAddMenu(false);
       }
@@ -98,7 +264,6 @@ export function Sidebar({
 
   const handleCreateFolder = () => {
     setShowAddMenu(false);
-    // Use setTimeout to ensure the menu closes first and DOM updates
     setTimeout(() => {
       const folderId = createFolder("");
       setEditingFolderId(folderId);
@@ -117,7 +282,6 @@ export function Sidebar({
       if (editingName.trim()) {
         renameFolder(editingFolderId, editingName.trim());
       } else {
-        // If name is empty, delete the folder (it was probably just created)
         deleteFolder(editingFolderId);
       }
     }
@@ -125,350 +289,274 @@ export function Sidebar({
     setEditingName("");
   };
 
-  // Drag handlers
-  const handleDragStart = (e: React.DragEvent, profileId: string) => {
-    setDraggedProfile(profileId);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", profileId);
-    // Add a slight delay to set drag image
-    const target = e.currentTarget as HTMLElement;
-    setTimeout(() => {
-      target.style.opacity = "0.5";
-    }, 0);
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    const target = e.currentTarget as HTMLElement;
-    target.style.opacity = "1";
-    setDraggedProfile(null);
-    setDragOverTarget(null);
-  };
-
-  const handleDragOver = (e: React.DragEvent, targetType: "folder" | "profile" | "ungrouped", targetId: string, position?: "before" | "after") => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-    if (draggedProfile && draggedProfile !== targetId) {
-      setDragOverTarget({ type: targetType, id: targetId, position });
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    // Only clear if we're actually leaving the element (not entering a child)
-    const relatedTarget = e.relatedTarget as Node | null;
-    if (!e.currentTarget.contains(relatedTarget)) {
-      setDragOverTarget(null);
-    }
-  };
-
-  const handleDropOnFolder = (e: React.DragEvent, folderId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const profileToMove = draggedProfile;
-    // Clear state first
-    setDraggedProfile(null);
-    setDragOverTarget(null);
-    // Then perform the move
-    if (profileToMove) {
-      moveProfileToFolder(profileToMove, folderId);
-    }
-  };
-
-  const handleDropOnProfile = (e: React.DragEvent, targetProfileId: string, folderId: string | null, currentIndex: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const profileToMove = draggedProfile;
-    const position = dragOverTarget?.position || "after";
-    // Clear state first
-    setDraggedProfile(null);
-    setDragOverTarget(null);
-    // Then perform the reorder
-    if (profileToMove && profileToMove !== targetProfileId) {
-      const targetIndex = position === "before" ? currentIndex : currentIndex + 1;
-      reorderProfileInFolder(profileToMove, folderId, targetIndex);
-    }
-  };
-
-  const handleDropOnUngrouped = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const profileToMove = draggedProfile;
-    const targetType = dragOverTarget?.type;
-    // Clear state first
-    setDraggedProfile(null);
-    setDragOverTarget(null);
-    // Only move to ungrouped if not dropping on a specific profile or folder
-    if (profileToMove && (targetType === "ungrouped" || !targetType)) {
-      moveProfileToFolder(profileToMove, null);
-    }
+  const handleSelectProfile = (id: string) => {
+    setSelectedProfileId(id);
+    setSidebarView("profiles");
+    setShowProfileMenu(false);
+    setProfileFilter("");
   };
 
   const isFavorite = (profileId: string) => profileOrg.favoriteProfile === profileId;
 
-  const renderProfile = (id: string, indent = false, folderId: string | null = null, index: number = 0) => {
+  // Drag and drop handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    if (active.data.current?.type === "profile") {
+      setDraggedProfileId(active.data.current.profileId);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setDraggedProfileId(null);
+
+    if (!over) return;
+
+    const activeData = active.data.current;
+    const overData = over.data.current;
+
+    if (activeData?.type !== "profile") return;
+
+    const profileId = activeData.profileId;
+
+    if (overData?.type === "folder") {
+      moveProfileToFolder(profileId, overData.folderId);
+    } else if (overData?.type === "ungrouped" || over.id === "ungrouped") {
+      moveProfileToFolder(profileId, null);
+    }
+  };
+
+  // Get profile info for display
+  const getProfileInfo = () => {
+    if (!profile) return null;
+    const version = profile.mcVersion || "Unknown";
+    const loader = profile.loader?.type || "Vanilla";
+    return { version, loader };
+  };
+
+  const profileInfo = getProfileInfo();
+
+  // Render draggable profile item in dropdown
+  const renderDropdownProfile = (id: string, inFolder = false) => {
     const isSelected = selectedProfileId === id;
     const matchesFilter = filteredProfiles.includes(id);
     if (!matchesFilter && profileFilter) return null;
 
-    const isDragging = draggedProfile === id;
-    const isDropTarget = dragOverTarget?.type === "profile" && dragOverTarget.id === id;
-    const dropPosition = isDropTarget ? dragOverTarget.position : null;
-
     return (
-      <button
+      <DraggableProfileItem
         key={id}
-        className={clsx(
-          "tree-item",
-          isSelected && "active",
-          indent && "tree-item-indent",
-          isFavorite(id) && "tree-item-favorite",
-          isDragging && "tree-item-dragging",
-          dropPosition === "before" && "tree-item-drop-before",
-          dropPosition === "after" && "tree-item-drop-after"
-        )}
-        onClick={() => {
-          setSelectedProfileId(id);
-          setSidebarView("profiles");
-        }}
+        id={id}
+        isSelected={isSelected}
+        isFavorite={isFavorite(id)}
+        inFolder={inFolder}
+        onSelect={() => handleSelectProfile(id)}
         onContextMenu={(e) => handleContextMenu(e, "profile", id)}
-        draggable
-        onDragStart={(e) => handleDragStart(e, id)}
-        onDragEnd={handleDragEnd}
-        onDragOver={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const midY = rect.top + rect.height / 2;
-          const position = e.clientY < midY ? "before" : "after";
-          handleDragOver(e, "profile", id, position);
-        }}
-        onDragLeave={handleDragLeave}
-        onDrop={(e) => handleDropOnProfile(e, id, folderId, index)}
-        data-tauri-drag-region="false"
-      >
-        {isFavorite(id) && (
-          <span className="tree-item-star" title="Favorite profile">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <path d="M6 1l1.545 3.13 3.455.502-2.5 2.436.59 3.441L6 8.885 2.91 10.51l.59-3.441L1 4.632l3.455-.502L6 1z" />
-            </svg>
-          </span>
-        )}
-        <span className="tree-item-label">{id}</span>
-      </button>
+      />
     );
   };
 
-  const renderFolder = (folder: ProfileFolder) => {
+  // Render droppable folder in dropdown
+  const renderDropdownFolder = (folder: ProfileFolder) => {
     const matchingProfiles = folder.profiles.filter((id) => filteredProfiles.includes(id));
     const hasMatches = matchingProfiles.length > 0 || !profileFilter;
     if (!hasMatches && profileFilter) return null;
 
     const isEditing = editingFolderId === folder.id;
-    const isDropTarget = dragOverTarget?.type === "folder" && dragOverTarget.id === folder.id;
 
     return (
-      <div key={folder.id} className={clsx("tree-folder", isDropTarget && "tree-folder-drop-target")}>
-        <button
-          className="tree-folder-header"
-          onClick={() => toggleFolderCollapsed(folder.id)}
-          onContextMenu={(e) => handleContextMenu(e, "folder", folder.id)}
-          onDragOver={(e) => handleDragOver(e, "folder", folder.id)}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDropOnFolder(e, folder.id)}
-          data-tauri-drag-region="false"
-        >
-          <span className={clsx("tree-chevron", !folder.collapsed && "expanded")}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" />
-            </svg>
-          </span>
-          {isEditing ? (
-            <input
-              ref={folderInputRef}
-              className="tree-folder-input"
-              value={editingName}
-              onChange={(e) => setEditingName(e.target.value)}
-              onBlur={handleFinishRename}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleFinishRename();
-                if (e.key === "Escape") {
-                  // If escaping from a new folder (empty name), delete it
-                  if (!folder.name) {
-                    deleteFolder(folder.id);
-                  }
-                  setEditingFolderId(null);
-                  setEditingName("");
-                }
-              }}
-              onClick={(e) => e.stopPropagation()}
-              placeholder="Folder name"
-            />
-          ) : (
-            <span
-              className="tree-folder-name"
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                handleStartRename(folder);
-              }}
-            >
-              {folder.name || "New Folder"}
-            </span>
-          )}
-          <span className="tree-folder-count">{folder.profiles.length}</span>
-        </button>
-        {!folder.collapsed && (
-          <div
-            className="tree-folder-contents"
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleDragOver(e, "folder", folder.id);
-            }}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDropOnFolder(e, folder.id)}
-          >
-            {folder.profiles.map((id, index) => renderProfile(id, true, folder.id, index))}
-            {folder.profiles.length === 0 && (
-              <div
-                className={clsx("tree-empty", isDropTarget && "tree-empty-drop-target")}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleDragOver(e, "folder", folder.id);
-                }}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDropOnFolder(e, folder.id)}
-              >
-                Drop profiles here
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <DroppableFolder
+        key={folder.id}
+        folder={folder}
+        isEditing={isEditing}
+        editingName={editingName}
+        onEditChange={setEditingName}
+        onFinishRename={handleFinishRename}
+        onCancelRename={() => {
+          if (!folder.name) deleteFolder(folder.id);
+          setEditingFolderId(null);
+          setEditingName("");
+        }}
+        onToggleCollapse={() => toggleFolderCollapsed(folder.id)}
+        onContextMenu={(e) => handleContextMenu(e, "folder", folder.id)}
+        onStartEdit={() => handleStartRename(folder)}
+      >
+        {folder.profiles.map((id) => renderDropdownProfile(id, true))}
+      </DroppableFolder>
     );
   };
 
   return (
     <aside className="sidebar">
-      {/* Header with add button */}
-      <div className="sidebar-section">
-        <div className="sidebar-header">
-          <span>Profiles</span>
-          <div className="sidebar-add-wrapper" ref={addMenuRef}>
-            <button
-              className="sidebar-add-btn"
-              onClick={() => setShowAddMenu(!showAddMenu)}
-              data-tauri-drag-region="false"
-              title="Add profile or folder"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-            {showAddMenu && (
-              <div className="sidebar-add-menu">
-                <button onClick={() => { onCreateProfile(); setShowAddMenu(false); }}>
-                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                    <path d="M7.5 1v13M1 7.5h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                  New Profile
-                </button>
-                <button onClick={handleCreateFolder}>
-                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                    <path d="M1.5 3.5h5l1 1.5h5.5a1 1 0 011 1v6a1 1 0 01-1 1h-11a1 1 0 01-1-1v-7.5a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  New Folder
-                </button>
-                <div className="menu-divider" />
-                <button onClick={() => { onCloneProfile(); setShowAddMenu(false); }} disabled={!profile}>
-                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                    <rect x="4" y="4" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-                    <path d="M11 4V2.5A1.5 1.5 0 009.5 1h-7A1.5 1.5 0 001 2.5v7A1.5 1.5 0 002.5 11H4" stroke="currentColor" strokeWidth="1.2" />
-                  </svg>
-                  Clone Profile
-                </button>
-                <button onClick={() => { onDiffProfiles(); setShowAddMenu(false); }}>
-                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                    <path d="M1 4h6M1 7.5h4M1 11h6M9 4h5M11 7.5h3M9 11h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  </svg>
-                  Compare Profiles
-                </button>
+      {/* Profile Context Selector */}
+      <div className="profile-context" ref={profileMenuRef}>
+        <button
+          className={clsx("profile-context-button", showProfileMenu && "open")}
+          onClick={() => setShowProfileMenu(!showProfileMenu)}
+          data-tauri-drag-region="false"
+        >
+          <div className="profile-context-icon">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+              <rect x="2" y="2" width="12" height="12" rx="3" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.25" />
+              <path d="M5 5.5h6M5 8h4M5 10.5h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
+          {selectedProfileId ? (
+            <>
+              <div className="profile-context-info">
+                <span className="profile-context-name">{selectedProfileId}</span>
+                {profileInfo && (
+                  <span className="profile-context-meta">
+                    {profileInfo.version} · {profileInfo.loader}
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="profile-context-info">
+              <span className="profile-context-placeholder">Select a profile</span>
+            </div>
+          )}
+          <svg className={clsx("profile-context-chevron", showProfileMenu && "open")} width="12" height="12" viewBox="0 0 12 12">
+            <path d="M3 4.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          </svg>
+        </button>
+
+        {/* Profile Dropdown Menu */}
+        {showProfileMenu && (
+          <div className="profile-dropdown">
+            {/* Search */}
+            {profiles.length > 3 && (
+              <div className="profile-dropdown-search">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M9.5 9.5l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search profiles..."
+                  value={profileFilter}
+                  onChange={(e) => setProfileFilter(e.target.value)}
+                  autoFocus
+                />
               </div>
             )}
-          </div>
-        </div>
-      </div>
 
-      {/* Search - only show if more than 5 profiles */}
-      {profiles.length > 5 && (
-        <div className="sidebar-search">
-          <input
-            value={profileFilter}
-            onChange={(e) => setProfileFilter(e.target.value)}
-            placeholder="Search…"
-            data-tauri-drag-region="false"
-          />
-        </div>
-      )}
-
-      {/* Profile tree */}
-      <div
-        className="profile-tree"
-        onDragOver={(e) => {
-          e.preventDefault();
-          if (draggedProfile) {
-            handleDragOver(e, "ungrouped", "root");
-          }
-        }}
-        onDrop={handleDropOnUngrouped}
-      >
-        {/* Folders */}
-        {profileOrg.folders.map(renderFolder)}
-
-        {/* Ungrouped profiles */}
-        {profileOrg.ungrouped.map((id, index) => renderProfile(id, false, null, index))}
-
-        {/* Empty state */}
-        {profiles.length === 0 && (
-          <div className="tree-empty-state">
-            <p>No profiles yet</p>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={onCreateProfile}
-              data-tauri-drag-region="false"
+            {/* Profile list with drag and drop */}
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
             >
-              Create profile
-            </button>
+              <div className="profile-dropdown-list">
+                {profileOrg.folders.map(renderDropdownFolder)}
+                <DroppableUngrouped>
+                  {profileOrg.ungrouped.map((id) => renderDropdownProfile(id))}
+                </DroppableUngrouped>
+
+                {profiles.length === 0 && (
+                  <div className="profile-dropdown-empty">No profiles yet</div>
+                )}
+              </div>
+
+              {/* Drag overlay for visual feedback */}
+              <DragOverlay dropAnimation={null}>
+                {draggedProfileId && (
+                  <div className="profile-dropdown-item dragging-overlay">
+                    {isFavorite(draggedProfileId) && (
+                      <svg className="profile-dropdown-star" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                        <path d="M6 1l1.545 3.13 3.455.502-2.5 2.436.59 3.441L6 8.885 2.91 10.51l.59-3.441L1 4.632l3.455-.502L6 1z" />
+                      </svg>
+                    )}
+                    <span className="profile-dropdown-name">{draggedProfileId}</span>
+                  </div>
+                )}
+              </DragOverlay>
+            </DndContext>
+
+            {/* Actions */}
+            <div className="profile-dropdown-actions">
+              <button onClick={() => { onCreateProfile(); setShowProfileMenu(false); }}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                Profile
+              </button>
+              <button onClick={() => { handleCreateFolder(); setShowProfileMenu(false); }}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M1 3h4.5l1 1.5H13v7.5H1V3z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Folder
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      <div className="sidebar-divider" />
+      {/* Profile-specific navigation (only show when profile selected) */}
+      {selectedProfileId && (
+        <div className="sidebar-nav sidebar-nav-profile">
+          <button
+            className={clsx("sidebar-nav-item", sidebarView === "profiles" && "active")}
+            onClick={() => setSidebarView("profiles")}
+            data-tauri-drag-region="false"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5 6h6M5 8.5h4M5 11h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            Overview
+          </button>
+        </div>
+      )}
 
-      <div className="sidebar-section" style={{ marginBottom: 16 }}>
+      {/* Global navigation */}
+      <div className="sidebar-nav sidebar-nav-global">
         <button
-          className={clsx("sidebar-item", sidebarView === "library" && "active")}
+          className={clsx("sidebar-nav-item", sidebarView === "library" && "active")}
           onClick={() => setSidebarView("library")}
           data-tauri-drag-region="false"
         >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 3h12M2 8h12M2 13h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
           Library
         </button>
         <button
-          className={clsx("sidebar-item", sidebarView === "store" && "active")}
+          className={clsx("sidebar-nav-item", sidebarView === "store" && "active")}
           onClick={() => setSidebarView("store")}
           data-tauri-drag-region="false"
         >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2L14 5v6l-6 3-6-3V5l6-3z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M8 8v6M8 8l6-3M8 8L2 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           Store
         </button>
         <button
-          className={clsx("sidebar-item", sidebarView === "logs" && "active")}
+          className={clsx("sidebar-nav-item", sidebarView === "logs" && "active")}
           onClick={() => setSidebarView("logs")}
           data-tauri-drag-region="false"
         >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M3 4h10M3 8h7M3 12h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
           Logs
+        </button>
+        <button
+          className={clsx("sidebar-nav-item", sidebarView === "settings" && "active")}
+          onClick={() => setSidebarView("settings")}
+          data-tauri-drag-region="false"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M2.93 2.93l1.41 1.41M11.66 11.66l1.41 1.41M2.93 13.07l1.41-1.41M11.66 4.34l1.41-1.41" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          Settings
         </button>
       </div>
 
+      {/* Account footer */}
       <div className="sidebar-footer">
-        <div className="sidebar-header" style={{ padding: "0 0 8px" }}>Account</div>
         {activeAccount ? (
           <button
             className={clsx("account-badge", sidebarView === "accounts" && "active")}
@@ -480,7 +568,6 @@ export function Sidebar({
               src={`https://mc-heads.net/avatar/${activeAccount.uuid.replace(/-/g, "")}/64`}
               alt={activeAccount.username}
               onError={(e) => {
-                // Fallback to initial if Crafatar fails
                 const target = e.currentTarget;
                 target.style.display = "none";
                 const fallback = target.nextElementSibling as HTMLElement;
@@ -516,8 +603,7 @@ export function Sidebar({
             <>
               <button
                 onClick={() => {
-                  setSelectedProfileId(contextMenuTarget.id);
-                  setSidebarView("profiles");
+                  handleSelectProfile(contextMenuTarget.id);
                   setContextMenuTarget(null);
                 }}
               >

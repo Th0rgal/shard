@@ -1,20 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../store";
 import { SkinViewer, type AnimationType, type ModelVariant } from "./SkinViewer";
 import { Field } from "./Field";
-import type { AccountInfo, Cape, Account } from "../types";
+import type { AccountInfo, Cape, Account, LibraryItem, LibraryFilter } from "../types";
 import { preloadCapeTextures } from "../lib/player-model";
 
-// Local storage key for skin library
-const SKIN_LIBRARY_KEY = "shard:skin-library";
-
-interface SkinLibraryItem {
-  url: string;
-  name: string;
-  variant: ModelVariant;
-  addedAt: number;
+// Extended library item with resolved skin URL
+interface SkinLibraryItemWithUrl extends LibraryItem {
+  resolvedUrl?: string;
 }
 
 // Animation options with labels
@@ -38,48 +34,78 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
   const [info, setInfo] = useState<AccountInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"skin" | "library" | "capes">("skin");
+  const [tab, setTab] = useState<"skin" | "library" | "capes">("library"); // Default to library
   const [uploading, setUploading] = useState(false);
   const [skinVariant, setSkinVariant] = useState<ModelVariant>("classic");
   const [skinUrl, setSkinUrl] = useState("");
-  const [skinLibrary, setSkinLibrary] = useState<SkinLibraryItem[]>([]);
+  const [skinLibrary, setSkinLibrary] = useState<SkinLibraryItemWithUrl[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [librarySearch, setLibrarySearch] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [animation, setAnimation] = useState<AnimationType>("walk");
+  const [selectedSkin, setSelectedSkin] = useState<SkinLibraryItemWithUrl | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Load skin library from local storage
-  useEffect(() => {
+  // Load skin library from SQLite database
+  const loadSkinLibrary = useCallback(async (search?: string) => {
+    setLibraryLoading(true);
     try {
-      const stored = localStorage.getItem(SKIN_LIBRARY_KEY);
-      if (stored) {
-        setSkinLibrary(JSON.parse(stored));
-      }
-    } catch {
-      // Ignore parse errors
+      const filter: LibraryFilter = {
+        content_type: "skin",
+        search: search || undefined,
+        limit: 50,
+      };
+      const items = await invoke<LibraryItem[]>("library_list_items_cmd", { filter });
+
+      // Resolve file paths to asset URLs for each skin
+      const itemsWithUrls: SkinLibraryItemWithUrl[] = await Promise.all(
+        items.map(async (item) => {
+          try {
+            const path = await invoke<string | null>("library_get_item_path_cmd", { id: item.id });
+            return {
+              ...item,
+              resolvedUrl: path ? convertFileSrc(path) : item.source_url || "",
+            };
+          } catch {
+            return { ...item, resolvedUrl: item.source_url || "" };
+          }
+        })
+      );
+
+      setSkinLibrary(itemsWithUrls);
+    } catch (err) {
+      console.error("Failed to load skin library:", err);
+    } finally {
+      setLibraryLoading(false);
     }
   }, []);
 
-  // Save skin to library
-  const addToLibrary = useCallback((url: string, name: string, variant: ModelVariant) => {
-    setSkinLibrary((prev) => {
-      // Don't add duplicates
-      if (prev.some((item) => item.url === url)) {
-        return prev;
-      }
-      const newLibrary = [{ url, name, variant, addedAt: Date.now() }, ...prev].slice(0, 20); // Max 20 items
-      localStorage.setItem(SKIN_LIBRARY_KEY, JSON.stringify(newLibrary));
-      return newLibrary;
-    });
-  }, []);
+  // Load skin library on mount
+  useEffect(() => {
+    void loadSkinLibrary();
+  }, [loadSkinLibrary]);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadSkinLibrary(librarySearch);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [librarySearch, loadSkinLibrary]);
 
   // Remove from library
-  const removeFromLibrary = useCallback((url: string) => {
-    setSkinLibrary((prev) => {
-      const newLibrary = prev.filter((item) => item.url !== url);
-      localStorage.setItem(SKIN_LIBRARY_KEY, JSON.stringify(newLibrary));
-      return newLibrary;
-    });
-  }, []);
+  const removeFromLibrary = useCallback(async (item: SkinLibraryItemWithUrl) => {
+    try {
+      await invoke("library_delete_item_cmd", { id: item.id, deleteFile: true });
+      await loadSkinLibrary(librarySearch);
+      if (selectedSkin?.id === item.id) {
+        setSelectedSkin(null);
+      }
+      notify("Skin removed from library");
+    } catch (err) {
+      notify("Failed to remove skin", String(err));
+    }
+  }, [loadSkinLibrary, librarySearch, selectedSkin, notify]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -103,10 +129,6 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
       if (activeSkin?.variant) {
         setSkinVariant(activeSkin.variant as ModelVariant);
       }
-      // Add current skin to library if it has a URL
-      if (activeSkin?.url) {
-        addToLibrary(activeSkin.url, data.username, (activeSkin.variant as ModelVariant) || "classic");
-      }
       // Preload all cape textures for instant switching
       const capeUrls = data.profile?.capes?.map((c) => c.url).filter(Boolean) ?? [];
       if (capeUrls.length > 0) {
@@ -119,7 +141,7 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
     } finally {
       setLoading(false);
     }
-  }, [addToLibrary]);
+  }, []);
 
   // Load account info when active account changes
   useEffect(() => {
@@ -161,13 +183,16 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
 
     setUploading(true);
     try {
+      // Upload skin and save to library (save_to_library defaults to true)
       await invoke("upload_skin_cmd", {
         id: activeAccount.uuid,
         path: file,
         variant: skinVariant,
+        saveToLibrary: true,
       });
       await loadAccountInfo(activeAccount.uuid);
-      notify("Skin uploaded successfully");
+      await loadSkinLibrary(librarySearch); // Refresh library
+      notify("Skin uploaded and added to library");
     } catch (err) {
       setError(String(err));
     } finally {
@@ -195,18 +220,19 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
     }
   };
 
-  const handleApplyLibrarySkin = async (item: SkinLibraryItem) => {
+  const handleApplyLibrarySkin = async (item: SkinLibraryItemWithUrl) => {
     if (!activeAccount) return;
 
-    setSkinVariant(item.variant);
     setUploading(true);
     try {
-      await invoke("set_skin_url_cmd", {
+      // Use apply_library_skin_cmd to apply from library
+      await invoke("apply_library_skin_cmd", {
         id: activeAccount.uuid,
-        url: item.url,
-        variant: item.variant,
+        itemId: item.id,
+        variant: skinVariant,
       });
       await loadAccountInfo(activeAccount.uuid);
+      setSelectedSkin(item);
       notify("Skin applied successfully");
     } catch (err) {
       setError(String(err));
@@ -273,7 +299,7 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
 
   if (!accounts || accounts.accounts.length === 0) {
     return (
-      <div className="view-transition">
+      <div className="view-transition" >
         <h1 className="page-title">Account</h1>
         <div className="account-empty-state">
           <div className="account-empty-icon">
@@ -293,7 +319,7 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
   }
 
   return (
-    <div className="view-transition account-view">
+    <div className="view-transition account-view" >
       {/* Account Selector Header */}
       <div className="account-header">
         <div className="account-selector" ref={dropdownRef}>
@@ -321,7 +347,6 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
 
           {dropdownOpen && (
             <div className="account-selector-dropdown">
-              <div className="account-selector-dropdown-header">Switch Account</div>
               {accounts.accounts.map((account) => (
                 <button
                   key={account.uuid}
@@ -538,47 +563,122 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
 
               {tab === "library" && (
                 <div className="account-library-tab">
-                  {skinLibrary.length === 0 ? (
+                  {/* Search bar */}
+                  <div className="account-library-search">
+                    <svg className="account-library-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <circle cx="7" cy="7" r="4.5" />
+                      <path d="M10.5 10.5L14 14" />
+                    </svg>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Search skins..."
+                      value={librarySearch}
+                      onChange={(e) => setLibrarySearch(e.target.value)}
+                    />
+                    {librarySearch && (
+                      <button
+                        className="account-library-search-clear"
+                        onClick={() => setLibrarySearch("")}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M2 2l8 8M10 2l-8 8" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Upload button in library tab for quick access */}
+                  <button
+                    className="btn btn-secondary account-library-upload-btn"
+                    onClick={handleUploadSkin}
+                    disabled={uploading}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M12 9v2.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9M7 2v7M4 5l3-3 3 3" />
+                    </svg>
+                    Add Skin to Library
+                  </button>
+
+                  {libraryLoading ? (
+                    <div className="account-library-loading">
+                      <div className="skin-viewer-loading" />
+                      <p>Loading skins...</p>
+                    </div>
+                  ) : skinLibrary.length === 0 ? (
                     <div className="account-library-empty">
-                      <p>Your skin library is empty</p>
-                      <p className="hint">Skins you upload or apply will appear here for quick access.</p>
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.4">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="M21 15l-5-5L5 21" />
+                      </svg>
+                      <p>No skins in library</p>
+                      <p className="hint">Upload skins to build your collection for quick switching.</p>
                     </div>
                   ) : (
-                    <div className="account-library-grid">
-                      {skinLibrary.map((item) => (
-                        <div key={item.url} className="account-library-item">
-                          <img
-                            src={`https://mc-heads.net/body/${encodeURIComponent(item.url)}/100`}
-                            alt={item.name}
-                            onError={(e) => {
-                              // Fallback to just showing the skin texture
-                              e.currentTarget.src = item.url;
-                            }}
-                          />
-                          <div className="account-library-item-info">
-                            <span className="account-library-item-name">{item.name}</span>
-                            <span className="account-library-item-variant">{item.variant}</span>
+                    <div className="account-library-grid-v2">
+                      {skinLibrary.map((item) => {
+                        const isSelected = selectedSkin?.id === item.id;
+                        return (
+                          <div
+                            key={item.id}
+                            className={`account-library-card ${isSelected ? "selected" : ""}`}
+                            onClick={() => setSelectedSkin(isSelected ? null : item)}
+                          >
+                            <div className="account-library-card-preview">
+                              <SkinViewer
+                                skinUrl={item.resolvedUrl || ""}
+                                width={80}
+                                height={120}
+                                animation="idle"
+                                animationSpeed={0.5}
+                              />
+                            </div>
+                            <div className="account-library-card-info">
+                              <span className="account-library-card-name" title={item.name}>
+                                {item.name}
+                              </span>
+                              <span className="account-library-card-date">
+                                {new Date(item.added_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            {isSelected && (
+                              <div className="account-library-card-actions">
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleApplyLibrarySkin(item);
+                                  }}
+                                  disabled={uploading}
+                                >
+                                  Apply
+                                </button>
+                                <button
+                                  className="btn btn-ghost btn-sm btn-icon-only"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void removeFromLibrary(item);
+                                  }}
+                                  title="Remove from library"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                    <path d="M2 2l10 10M12 2l-10 10" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                            {isSelected && (
+                              <div className="account-library-card-check">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                  <circle cx="8" cy="8" r="8" />
+                                  <path d="M5 8l2 2 4-4" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              </div>
+                            )}
                           </div>
-                          <div className="account-library-item-actions">
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => handleApplyLibrarySkin(item)}
-                              disabled={uploading}
-                            >
-                              Apply
-                            </button>
-                            <button
-                              className="btn btn-ghost btn-sm"
-                              onClick={() => removeFromLibrary(item.url)}
-                              title="Remove from library"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <path d="M2 2l8 8M10 2l-8 8" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

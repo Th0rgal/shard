@@ -159,7 +159,7 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
   return (
     <Modal open={open} onClose={onClose} title="New profile">
       <div className="create-profile-modal">
-        {/* Template grid */}
+        {/* Template list */}
         <div className="template-section">
           <label className="field-label">Template</label>
           {templatesLoading ? (
@@ -167,24 +167,31 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
           ) : templates.length === 0 ? (
             <div className="template-empty">No templates available</div>
           ) : (
-            <div className="template-grid">
+            <div className="template-list">
               {templates.map((template) => (
                 <button
                   key={template.id}
                   type="button"
-                  className={clsx("template-card", selectedTemplateId === template.id && "selected")}
+                  className={clsx("template-item", selectedTemplateId === template.id && "selected")}
                   onClick={() => handleTemplateSelect(template.id)}
                 >
-                  <span className="template-card-name">{template.name}</span>
-                  {selectedTemplateId === template.id && (
-                    <span className="template-card-check">✓</span>
-                  )}
+                  <div className="template-item-radio">
+                    <div className="template-item-radio-inner" />
+                  </div>
+                  <div className="template-item-content">
+                    <div className="template-item-header">
+                      <span className="template-item-name">{template.name}</span>
+                      {template.loader?.type && (
+                        <span className="template-item-loader">{template.loader.type}</span>
+                      )}
+                    </div>
+                    {template.description && (
+                      <span className="template-item-description">{template.description}</span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
-          )}
-          {selectedTemplate && (
-            <p className="template-description">{selectedTemplate.description}</p>
           )}
         </div>
 
@@ -245,54 +252,105 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
         .template-section {
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 8px;
         }
 
-        .template-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 10px;
+        .template-list {
+          display: flex;
+          flex-direction: column;
+          border: 1px solid var(--border-subtle);
+          border-radius: 10px;
+          overflow: hidden;
         }
 
-        .template-card {
+        .template-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 12px 14px;
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid var(--border-subtle);
+          cursor: pointer;
+          transition: background 0.15s ease;
+          text-align: left;
+          width: 100%;
+        }
+
+        .template-item:last-child {
+          border-bottom: none;
+        }
+
+        .template-item:hover {
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .template-item.selected {
+          background: rgba(124, 199, 255, 0.06);
+        }
+
+        .template-item-radio {
+          width: 16px;
+          height: 16px;
+          border: 2px solid var(--border-default);
+          border-radius: 50%;
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          padding: 14px 16px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--border-subtle);
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.15s ease;
-          text-align: left;
+          justify-content: center;
+          flex-shrink: 0;
+          margin-top: 1px;
+          transition: border-color 0.15s ease;
         }
 
-        .template-card:hover {
-          background: rgba(255, 255, 255, 0.05);
-          border-color: var(--border-default);
+        .template-item.selected .template-item-radio {
+          border-color: var(--accent-primary);
         }
 
-        .template-card.selected {
-          background: rgba(124, 199, 255, 0.1);
-          border-color: rgba(124, 199, 255, 0.3);
+        .template-item-radio-inner {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: transparent;
+          transition: background 0.15s ease;
         }
 
-        .template-card-name {
-          font-size: 14px;
+        .template-item.selected .template-item-radio-inner {
+          background: var(--accent-primary);
+        }
+
+        .template-item-content {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .template-item-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .template-item-name {
+          font-size: 13px;
           font-weight: 500;
           color: var(--text-primary);
         }
 
-        .template-card-check {
-          color: var(--accent-primary);
-          font-size: 14px;
+        .template-item-loader {
+          font-size: 11px;
+          color: var(--text-muted);
+          background: rgba(255, 255, 255, 0.06);
+          padding: 2px 6px;
+          border-radius: 4px;
+          text-transform: capitalize;
         }
 
-        .template-description {
+        .template-item-description {
           font-size: 12px;
           color: var(--text-muted);
-          margin: 0;
-          padding: 0 2px;
+          line-height: 1.4;
         }
 
         .template-loading,
@@ -303,7 +361,7 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
           color: var(--text-muted);
           background: rgba(255, 255, 255, 0.02);
           border: 1px solid var(--border-subtle);
-          border-radius: 12px;
+          border-radius: 10px;
         }
 
         .version-row {
