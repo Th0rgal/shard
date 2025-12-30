@@ -78,6 +78,12 @@ export type ManifestVersion = {
   releaseTime?: string;
 };
 
+export type MinecraftVersionsResponse = {
+  versions: ManifestVersion[];
+  latest_release?: string | null;
+  latest_snapshot?: string | null;
+};
+
 export type ContentTab = "mods" | "resourcepacks" | "shaderpacks";
 
 export type ModalType =

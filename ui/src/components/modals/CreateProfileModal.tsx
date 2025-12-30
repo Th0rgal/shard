@@ -5,7 +5,7 @@ import { Modal } from "../Modal";
 import { ModalFooter } from "../ModalFooter";
 import { Field } from "../Field";
 import { useAppStore } from "../../store";
-import type { ManifestVersion, Template } from "../../types";
+import type { ManifestVersion, MinecraftVersionsResponse, Template } from "../../types";
 
 interface CreateProfileModalProps {
   open: boolean;
@@ -117,20 +117,14 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
   const fetchMinecraftVersions = async () => {
     setMcVersionLoading(true);
     try {
-      const resp = await fetch("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      const list = (data.versions ?? []).map((entry: any) => ({
-        id: String(entry.id),
-        type: String(entry.type),
-        releaseTime: entry.releaseTime,
-      })) as ManifestVersion[];
-      setMcVersions(list);
-      if (!form.mcVersion && data.latest?.release) {
-        setForm((prev) => ({ ...prev, mcVersion: data.latest.release }));
+      const data = await invoke<MinecraftVersionsResponse>("fetch_minecraft_versions_cmd");
+      setMcVersions(data.versions);
+      if (!form.mcVersion && data.latest_release) {
+        setForm((prev) => ({ ...prev, mcVersion: data.latest_release! }));
       }
     } catch (err) {
-      console.error(err);
+      console.error("Failed to fetch Minecraft versions:", err);
+      notify("Failed to fetch Minecraft versions", String(err));
     } finally {
       setMcVersionLoading(false);
     }
@@ -139,15 +133,11 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
   const fetchLoaderVersions = async () => {
     setLoaderLoading(true);
     try {
-      const resp = await fetch("https://meta.fabricmc.net/v2/versions/loader");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      const versions = (data ?? [])
-        .map((entry: any) => entry?.loader?.version)
-        .filter((v: string | undefined) => !!v) as string[];
-      setLoaderVersions(Array.from(new Set(versions)));
+      const versions = await invoke<string[]>("fetch_fabric_versions_cmd");
+      setLoaderVersions(versions);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to fetch Fabric versions:", err);
+      notify("Failed to fetch Fabric versions", String(err));
     } finally {
       setLoaderLoading(false);
     }

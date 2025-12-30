@@ -50,7 +50,10 @@ pub fn run() {
             commands::list_log_files_cmd,
             commands::read_logs_cmd,
             commands::list_crash_reports_cmd,
-            commands::read_crash_report_cmd
+            commands::read_crash_report_cmd,
+            // Version fetching commands
+            commands::fetch_minecraft_versions_cmd,
+            commands::fetch_fabric_versions_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

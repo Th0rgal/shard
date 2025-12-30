@@ -766,3 +766,88 @@ pub fn read_crash_report_cmd(profile_id: String, file: Option<String>) -> Result
 
     std::fs::read_to_string(&crash_path).map_err(|e| e.to_string())
 }
+
+// ============================================================================
+// Version fetching commands
+// ============================================================================
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ManifestVersion {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub version_type: String,
+    #[serde(rename = "releaseTime")]
+    pub release_time: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct VersionManifestResponse {
+    versions: Vec<ManifestVersion>,
+    latest: Option<LatestVersions>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct LatestVersions {
+    release: Option<String>,
+    snapshot: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct MinecraftVersionsResponse {
+    pub versions: Vec<ManifestVersion>,
+    pub latest_release: Option<String>,
+    pub latest_snapshot: Option<String>,
+}
+
+#[tauri::command]
+pub fn fetch_minecraft_versions_cmd() -> Result<MinecraftVersionsResponse, String> {
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
+        .send()
+        .map_err(|e| format!("Failed to fetch Minecraft versions: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+
+    let manifest: VersionManifestResponse = resp
+        .json()
+        .map_err(|e| format!("Failed to parse version manifest: {}", e))?;
+
+    Ok(MinecraftVersionsResponse {
+        versions: manifest.versions,
+        latest_release: manifest.latest.as_ref().and_then(|l| l.release.clone()),
+        latest_snapshot: manifest.latest.as_ref().and_then(|l| l.snapshot.clone()),
+    })
+}
+
+#[derive(Clone, Deserialize)]
+struct FabricLoaderEntry {
+    loader: FabricLoaderInfo,
+}
+
+#[derive(Clone, Deserialize)]
+struct FabricLoaderInfo {
+    version: String,
+}
+
+#[tauri::command]
+pub fn fetch_fabric_versions_cmd() -> Result<Vec<String>, String> {
+    let client = reqwest::blocking::Client::new();
+    let resp = client
+        .get("https://meta.fabricmc.net/v2/versions/loader")
+        .send()
+        .map_err(|e| format!("Failed to fetch Fabric versions: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP error: {}", resp.status()));
+    }
+
+    let entries: Vec<FabricLoaderEntry> = resp
+        .json()
+        .map_err(|e| format!("Failed to parse Fabric versions: {}", e))?;
+
+    let versions: Vec<String> = entries.into_iter().map(|e| e.loader.version).collect();
+    Ok(versions)
+}
