@@ -83,11 +83,13 @@ interface AppState {
   setContextMenuTarget: (target: { type: "profile" | "folder"; id: string; x: number; y: number } | null) => void;
 
   // Profile organization actions
-  createFolder: (name: string) => void;
+  createFolder: (name: string) => string;
   renameFolder: (folderId: string, name: string) => void;
   deleteFolder: (folderId: string) => void;
   toggleFolderCollapsed: (folderId: string) => void;
   moveProfileToFolder: (profileId: string, folderId: string | null) => void;
+  reorderProfileInFolder: (profileId: string, folderId: string | null, targetIndex: number) => void;
+  setFavoriteProfile: (profileId: string | null) => void;
   loadProfileOrganization: () => void;
   syncProfileOrganization: () => void;
 
@@ -165,6 +167,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const newOrg = { ...profileOrg, folders: [...profileOrg.folders, newFolder] };
     set({ profileOrg: newOrg });
     localStorage.setItem(PROFILE_ORG_KEY, JSON.stringify(newOrg));
+    return id;
   },
 
   renameFolder: (folderId: string, name: string) => {
@@ -218,7 +221,42 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
     }
 
-    const newOrg = { folders: newFolders, ungrouped: newUngrouped };
+    const newOrg = { ...profileOrg, folders: newFolders, ungrouped: newUngrouped };
+    set({ profileOrg: newOrg });
+    localStorage.setItem(PROFILE_ORG_KEY, JSON.stringify(newOrg));
+  },
+
+  reorderProfileInFolder: (profileId: string, folderId: string | null, targetIndex: number) => {
+    const { profileOrg } = get();
+    // Remove from current location
+    let newFolders = profileOrg.folders.map((f) => ({
+      ...f,
+      profiles: f.profiles.filter((p) => p !== profileId),
+    }));
+    let newUngrouped = profileOrg.ungrouped.filter((p) => p !== profileId);
+
+    // Add at specific index in target location
+    if (folderId === null) {
+      newUngrouped.splice(targetIndex, 0, profileId);
+    } else {
+      newFolders = newFolders.map((f) => {
+        if (f.id === folderId) {
+          const profiles = [...f.profiles];
+          profiles.splice(targetIndex, 0, profileId);
+          return { ...f, profiles };
+        }
+        return f;
+      });
+    }
+
+    const newOrg = { ...profileOrg, folders: newFolders, ungrouped: newUngrouped };
+    set({ profileOrg: newOrg });
+    localStorage.setItem(PROFILE_ORG_KEY, JSON.stringify(newOrg));
+  },
+
+  setFavoriteProfile: (profileId: string | null) => {
+    const { profileOrg } = get();
+    const newOrg = { ...profileOrg, favoriteProfile: profileId };
     set({ profileOrg: newOrg });
     localStorage.setItem(PROFILE_ORG_KEY, JSON.stringify(newOrg));
   },

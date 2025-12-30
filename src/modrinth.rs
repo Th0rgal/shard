@@ -143,17 +143,16 @@ impl SearchFacets {
         let mut facets = Vec::new();
 
         if let Some(pt) = &self.project_type {
-            facets.push(format!("[\"project_type:{}\"]", pt));
+            facets.push(format!("[\"project_types:{}\"]", pt));
         }
         for cat in &self.categories {
             facets.push(format!("[\"categories:{}\"]", cat));
         }
         for ver in &self.game_versions {
-            facets.push(format!("[\"versions:{}\"]", ver));
+            facets.push(format!("[\"game_versions:{}\"]", ver));
         }
-        for loader in &self.loaders {
-            facets.push(format!("[\"loaders:{}\"]", loader));
-        }
+        // Note: loaders is NOT a filterable attribute in Modrinth search API
+        // Filtering by loader must be done post-search or via project/version endpoints
 
         if facets.is_empty() {
             String::new()

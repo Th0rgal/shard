@@ -61,6 +61,7 @@ fn populate_dir(
     let default_ext = match kind {
         ContentKind::Mod => "jar",
         ContentKind::ResourcePack | ContentKind::ShaderPack => "zip",
+        ContentKind::Skin => "png",
     };
 
     for item in items {

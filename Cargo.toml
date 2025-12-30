@@ -18,6 +18,7 @@ sha2 = "0.10.9"
 shell-words = "1.1.1"
 urlencoding = "2.1.3"
 zip = "7.0.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Fast builds for development/testing (default)
 # Use: cargo build (or cargo build --profile dev)

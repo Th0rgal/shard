@@ -12,6 +12,7 @@ pub fn run() {
             commands::create_profile_cmd,
             commands::clone_profile_cmd,
             commands::delete_profile_cmd,
+            commands::rename_profile_cmd,
             commands::diff_profiles_cmd,
             commands::add_mod_cmd,
             commands::add_resourcepack_cmd,
@@ -33,6 +34,7 @@ pub fn run() {
             commands::upload_skin_cmd,
             commands::set_skin_url_cmd,
             commands::reset_skin_cmd,
+            commands::apply_library_skin_cmd,
             commands::set_cape_cmd,
             commands::hide_cape_cmd,
             // Config commands
@@ -52,9 +54,31 @@ pub fn run() {
             commands::read_logs_cmd,
             commands::list_crash_reports_cmd,
             commands::read_crash_report_cmd,
+            commands::start_log_watch,
             // Version fetching commands
             commands::fetch_minecraft_versions_cmd,
-            commands::fetch_fabric_versions_cmd
+            commands::fetch_fabric_versions_cmd,
+            // Java detection commands
+            commands::detect_java_installations_cmd,
+            commands::validate_java_path_cmd,
+            commands::get_required_java_version_cmd,
+            commands::check_java_compatibility_cmd,
+            // Library commands
+            commands::library_list_items_cmd,
+            commands::library_get_item_cmd,
+            commands::library_get_item_by_hash_cmd,
+            commands::library_add_item_cmd,
+            commands::library_update_item_cmd,
+            commands::library_delete_item_cmd,
+            commands::library_import_file_cmd,
+            commands::library_import_folder_cmd,
+            commands::library_get_stats_cmd,
+            commands::library_sync_cmd,
+            commands::library_list_tags_cmd,
+            commands::library_create_tag_cmd,
+            commands::library_delete_tag_cmd,
+            commands::library_set_item_tags_cmd,
+            commands::library_add_to_profile_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

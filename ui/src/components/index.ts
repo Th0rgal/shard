@@ -7,9 +7,10 @@ export { ErrorBoundary } from "./ErrorBoundary";
 export { Sidebar } from "./Sidebar";
 export { ProfileView } from "./ProfileView";
 export { AccountsView } from "./AccountsView";
-export { SettingsView } from "./SettingsView";
+export { AccountView } from "./AccountView";
 export { SkinViewer } from "./SkinViewer";
 export { StoreView } from "./StoreView";
 export { LogsView } from "./LogsView";
+export { LibraryView } from "./LibraryView";
 
 export * from "./modals";

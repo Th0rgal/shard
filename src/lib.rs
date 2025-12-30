@@ -4,6 +4,8 @@ pub mod config;
 pub mod content_store;
 pub mod curseforge;
 pub mod instance;
+pub mod java;
+pub mod library;
 pub mod logs;
 pub mod minecraft;
 pub mod modrinth;

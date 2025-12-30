@@ -3,6 +3,7 @@ interface ModalFooterProps {
   onSubmit: () => void;
   cancelLabel?: string;
   submitLabel?: string;
+  submitDisabled?: boolean;
   tone?: "default" | "danger";
 }
 
@@ -11,6 +12,7 @@ export function ModalFooter({
   onSubmit,
   cancelLabel = "Cancel",
   submitLabel = "Submit",
+  submitDisabled = false,
   tone = "default",
 }: ModalFooterProps) {
   return (
@@ -21,6 +23,7 @@ export function ModalFooter({
       <button
         className={tone === "danger" ? "btn btn-danger" : "btn btn-primary"}
         onClick={onSubmit}
+        disabled={submitDisabled}
       >
         {submitLabel}
       </button>

@@ -7,6 +7,7 @@ pub struct Paths {
     pub store_mods: PathBuf,
     pub store_resourcepacks: PathBuf,
     pub store_shaderpacks: PathBuf,
+    pub store_skins: PathBuf,
     pub profiles: PathBuf,
     pub instances: PathBuf,
     pub cache_downloads: PathBuf,
@@ -18,6 +19,7 @@ pub struct Paths {
     pub minecraft_assets_indexes: PathBuf,
     pub accounts: PathBuf,
     pub config: PathBuf,
+    pub library_db: PathBuf,
 }
 
 impl Paths {
@@ -36,6 +38,7 @@ impl Paths {
         let store_mods = base.join("store").join("mods").join("sha256");
         let store_resourcepacks = base.join("store").join("resourcepacks").join("sha256");
         let store_shaderpacks = base.join("store").join("shaderpacks").join("sha256");
+        let store_skins = base.join("store").join("skins").join("sha256");
         let profiles = base.join("profiles");
         let instances = base.join("instances");
         let cache_downloads = base.join("caches").join("downloads");
@@ -50,11 +53,13 @@ impl Paths {
 
         let accounts = base.join("accounts.json");
         let config = base.join("config.json");
+        let library_db = base.join("library.db");
 
         Ok(Self {
             store_mods,
             store_resourcepacks,
             store_shaderpacks,
+            store_skins,
             profiles,
             instances,
             cache_downloads,
@@ -66,6 +71,7 @@ impl Paths {
             minecraft_assets_indexes,
             accounts,
             config,
+            library_db,
         })
     }
 
@@ -76,6 +82,8 @@ impl Paths {
             .context("failed to create store/resourcepacks directory")?;
         std::fs::create_dir_all(&self.store_shaderpacks)
             .context("failed to create store/shaderpacks directory")?;
+        std::fs::create_dir_all(&self.store_skins)
+            .context("failed to create store/skins directory")?;
         std::fs::create_dir_all(&self.profiles).context("failed to create profiles directory")?;
         std::fs::create_dir_all(&self.instances).context("failed to create instances directory")?;
         std::fs::create_dir_all(&self.cache_downloads)
@@ -120,6 +128,10 @@ impl Paths {
 
     pub fn store_shaderpack_path(&self, hash_hex: &str) -> PathBuf {
         self.store_shaderpacks.join(hash_hex)
+    }
+
+    pub fn store_skin_path(&self, hash_hex: &str) -> PathBuf {
+        self.store_skins.join(hash_hex)
     }
 
     pub fn is_profile_present(&self, id: &str) -> bool {

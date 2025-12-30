@@ -12,6 +12,7 @@ pub enum ContentKind {
     Mod,
     ResourcePack,
     ShaderPack,
+    Skin,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +29,7 @@ impl ContentKind {
             ContentKind::Mod => "mod",
             ContentKind::ResourcePack => "resourcepack",
             ContentKind::ShaderPack => "shaderpack",
+            ContentKind::Skin => "skin",
         }
     }
 }
@@ -135,5 +137,6 @@ pub fn content_store_path(paths: &Paths, kind: ContentKind, hash: &str) -> PathB
         ContentKind::Mod => paths.store_mod_path(hash_hex),
         ContentKind::ResourcePack => paths.store_resourcepack_path(hash_hex),
         ContentKind::ShaderPack => paths.store_shaderpack_path(hash_hex),
+        ContentKind::Skin => paths.store_skin_path(hash_hex),
     }
 }

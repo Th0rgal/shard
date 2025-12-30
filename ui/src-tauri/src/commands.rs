@@ -3,12 +3,29 @@ use shard::accounts::{Account, Accounts, load_accounts, remove_account, save_acc
 use shard::auth::{DeviceCode, request_device_code};
 use shard::config::{Config, load_config, save_config};
 use shard::content_store::{ContentStore, ContentType, Platform, SearchOptions, ContentItem, ContentVersion};
-use shard::logs::{LogEntry, LogFile, list_log_files, list_crash_reports, read_log_file, read_log_tail};
+use shard::java::{JavaInstallation, JavaValidation, detect_installations, validate_java_path, get_required_java_version, is_java_compatible};
+use shard::library::{Library, LibraryItem, LibraryFilter, LibraryItemInput, LibraryContentType, LibraryStats, Tag, ImportResult};
+use shard::logs::{LogEntry, LogFile, LogWatcher, list_log_files, list_crash_reports, read_log_file, read_log_tail};
 use shard::minecraft::{LaunchPlan, prepare};
 use shard::ops::{finish_device_code_flow, parse_loader, resolve_input, resolve_launch_account};
 use shard::paths::Paths;
-use shard::profile::{ContentRef, Loader, Profile, Runtime, clone_profile, create_profile, delete_profile, diff_profiles, load_profile, save_profile, upsert_mod, upsert_resourcepack, upsert_shaderpack, remove_mod, remove_resourcepack, remove_shaderpack, list_profiles};
-use shard::skin::{MinecraftProfile, get_profile as get_mc_profile, get_avatar_url, get_body_url, get_skin_url, get_cape_url, upload_skin, set_skin_url, reset_skin, set_cape, hide_cape, SkinVariant};
+use shard::profile::{ContentRef, Loader, Profile, Runtime, clone_profile, create_profile, delete_profile, diff_profiles, list_profiles, load_profile, remove_mod, remove_resourcepack, remove_shaderpack, rename_profile, save_profile, upsert_mod, upsert_resourcepack, upsert_shaderpack};
+use shard::skin::{
+    MinecraftProfile,
+    get_profile as get_mc_profile,
+    get_avatar_url,
+    get_body_url,
+    get_skin_url,
+    get_cape_url,
+    get_active_skin,
+    get_active_cape,
+    upload_skin,
+    set_skin_url,
+    reset_skin,
+    set_cape,
+    hide_cape,
+    SkinVariant,
+};
 use shard::store::{ContentKind, store_content};
 use shard::template::{Template, list_templates, load_template, init_builtin_templates};
 use std::path::PathBuf;
@@ -159,6 +176,12 @@ pub fn delete_profile_cmd(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn rename_profile_cmd(id: String, new_id: String) -> Result<Profile, String> {
+    let paths = load_paths()?;
+    rename_profile(&paths, &id, &new_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn diff_profiles_cmd(a: String, b: String) -> Result<DiffResult, String> {
     let paths = load_paths()?;
     let profile_a = load_profile(&paths, &a).map_err(|e| e.to_string())?;
@@ -177,7 +200,38 @@ fn add_content(
     let paths = load_paths()?;
     let mut profile_data = load_profile(&paths, profile_id).map_err(|e| e.to_string())?;
     let (path, source, file_name_hint) = resolve_input(&paths, input).map_err(|e| e.to_string())?;
-    let stored = store_content(&paths, kind, &path, source, file_name_hint).map_err(|e| e.to_string())?;
+    let stored = store_content(&paths, kind, &path, source.clone(), file_name_hint.clone()).map_err(|e| e.to_string())?;
+
+    // Auto-add to library
+    if let Ok(library) = Library::from_paths(&paths) {
+        let lib_content_type = match kind {
+            ContentKind::Mod => "mod",
+            ContentKind::ResourcePack => "resourcepack",
+            ContentKind::ShaderPack => "shaderpack",
+            ContentKind::Skin => "skin",
+        };
+        let hash = stored.hash.strip_prefix("sha256:").unwrap_or(&stored.hash);
+        let lib_input = LibraryItemInput {
+            hash: hash.to_string(),
+            content_type: Some(lib_content_type.to_string()),
+            name: Some(name.clone().unwrap_or_else(|| stored.name.clone())),
+            file_name: file_name_hint.clone(),
+            source_url: source.clone(),
+            source_platform: if input.contains("modrinth.com") { Some("modrinth".to_string()) }
+                else if input.contains("curseforge.com") { Some("curseforge".to_string()) }
+                else { Some("local".to_string()) },
+            ..Default::default()
+        };
+        if let Ok(lib_item) = library.add_item(&lib_input) {
+            let version_tag = format!("mc:{}", profile_data.mc_version);
+            let _ = library.add_tag_to_item(lib_item.id, &version_tag);
+            if let Some(loader) = profile_data.loader.as_ref() {
+                let loader_tag = format!("loader:{}", loader.loader_type);
+                let _ = library.add_tag_to_item(lib_item.id, &loader_tag);
+            }
+        }
+    }
+
     let content_ref = ContentRef {
         name: name.unwrap_or(stored.name),
         hash: stored.hash,
@@ -190,6 +244,7 @@ fn add_content(
         ContentKind::Mod => upsert_mod(&mut profile_data, content_ref),
         ContentKind::ResourcePack => upsert_resourcepack(&mut profile_data, content_ref),
         ContentKind::ShaderPack => upsert_shaderpack(&mut profile_data, content_ref),
+        ContentKind::Skin => false, // Skins are not added to profiles
     };
     save_profile(&paths, &profile_data).map_err(|e| e.to_string())?;
     Ok(changed)
@@ -202,6 +257,7 @@ fn remove_content(profile_id: &str, target: &str, kind: ContentKind) -> Result<b
         ContentKind::Mod => remove_mod(&mut profile_data, target),
         ContentKind::ResourcePack => remove_resourcepack(&mut profile_data, target),
         ContentKind::ShaderPack => remove_shaderpack(&mut profile_data, target),
+        ContentKind::Skin => false, // Skins are not removed from profiles
     };
     if changed {
         save_profile(&paths, &profile_data).map_err(|e| e.to_string())?;
@@ -398,19 +454,39 @@ pub fn get_account_info_cmd(id: Option<String>) -> Result<AccountInfo, String> {
 
     let profile = get_mc_profile(&account.minecraft.access_token).ok();
 
+    let (skin_url, cape_url) = if let Some(ref profile) = profile {
+        let skin_url = get_active_skin(profile)
+            .map(|skin| normalize_texture_url(&skin.url))
+            .unwrap_or_else(|| get_skin_url(&account.uuid));
+        let cape_url = get_active_cape(profile)
+            .map(|cape| normalize_texture_url(&cape.url))
+            .unwrap_or_else(|| get_cape_url(&account.uuid));
+        (skin_url, cape_url)
+    } else {
+        (get_skin_url(&account.uuid), get_cape_url(&account.uuid))
+    };
+
     Ok(AccountInfo {
         uuid: account.uuid.clone(),
         username: account.username.clone(),
         avatar_url: get_avatar_url(&account.uuid, 128),
         body_url: get_body_url(&account.uuid, 256),
-        skin_url: get_skin_url(&account.uuid),
-        cape_url: get_cape_url(&account.uuid),
+        skin_url,
+        cape_url,
         profile,
     })
 }
 
+fn normalize_texture_url(url: &str) -> String {
+    if let Some(stripped) = url.strip_prefix("http://") {
+        format!("https://{}", stripped)
+    } else {
+        url.to_string()
+    }
+}
+
 #[tauri::command]
-pub fn upload_skin_cmd(id: Option<String>, path: String, variant: String) -> Result<(), String> {
+pub fn upload_skin_cmd(id: Option<String>, path: String, variant: String, save_to_library: Option<bool>) -> Result<Option<LibraryItem>, String> {
     let paths = load_paths()?;
     let accounts = load_accounts(&paths).map_err(|e| e.to_string())?;
 
@@ -421,9 +497,20 @@ pub fn upload_skin_cmd(id: Option<String>, path: String, variant: String) -> Res
         .find(|a| a.uuid == target || a.username.to_lowercase() == target.to_lowercase())
         .ok_or_else(|| "account not found".to_string())?;
 
+    let skin_path = PathBuf::from(&path);
     let variant: SkinVariant = variant.parse().map_err(|e| format!("{}", e))?;
-    upload_skin(&account.minecraft.access_token, &PathBuf::from(path), variant)
-        .map_err(|e| e.to_string())
+    upload_skin(&account.minecraft.access_token, &skin_path, variant)
+        .map_err(|e| e.to_string())?;
+
+    // Optionally save to library
+    if save_to_library.unwrap_or(true) {
+        let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+        let item = library.import_file(&paths, &skin_path, LibraryContentType::Skin)
+            .map_err(|e| e.to_string())?;
+        Ok(Some(item))
+    } else {
+        Ok(None)
+    }
 }
 
 #[tauri::command]
@@ -456,6 +543,36 @@ pub fn reset_skin_cmd(id: Option<String>) -> Result<(), String> {
         .ok_or_else(|| "account not found".to_string())?;
 
     reset_skin(&account.minecraft.access_token).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn apply_library_skin_cmd(id: Option<String>, item_id: i64, variant: String) -> Result<(), String> {
+    let paths = load_paths()?;
+    let accounts = load_accounts(&paths).map_err(|e| e.to_string())?;
+
+    let target = id.or_else(|| accounts.active.clone())
+        .ok_or_else(|| "no account selected".to_string())?;
+
+    let account = accounts.accounts.iter()
+        .find(|a| a.uuid == target || a.username.to_lowercase() == target.to_lowercase())
+        .ok_or_else(|| "account not found".to_string())?;
+
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    let item = library.get_item(item_id).map_err(|e| e.to_string())?
+        .ok_or_else(|| "skin not found in library".to_string())?;
+
+    if item.content_type != LibraryContentType::Skin {
+        return Err("item is not a skin".to_string());
+    }
+
+    let skin_path = paths.store_skin_path(&item.hash);
+    if !skin_path.exists() {
+        return Err("skin file not found in store".to_string());
+    }
+
+    let variant: SkinVariant = variant.parse().map_err(|e| format!("{}", e))?;
+    upload_skin(&account.minecraft.access_token, &skin_path, variant)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -667,12 +784,35 @@ pub fn store_get_versions_cmd(
     platform: String,
     game_version: Option<String>,
     loader: Option<String>,
+    profile_id: Option<String>,
 ) -> Result<Vec<ContentVersion>, String> {
     let paths = load_paths()?;
     let config = load_config(&paths).map_err(|e| e.to_string())?;
     let store = ContentStore::new(config.curseforge_api_key.as_deref());
     let platform = parse_platform(&platform)?;
-    store.get_versions(platform, &project_id, game_version.as_deref(), loader.as_deref())
+
+    // Fetch project to determine content type
+    let project = store.get_project(platform, &project_id).map_err(|e| e.to_string())?;
+
+    // Determine the effective loader based on content type
+    let effective_loader: Option<String> = match project.content_type {
+        ContentType::Mod | ContentType::ModPack => loader,
+        ContentType::ShaderPack => {
+            // For shaders, detect if the profile has iris/optifine installed
+            if let Some(pid) = &profile_id {
+                if let Ok(profile) = load_profile(&paths, pid) {
+                    profile.primary_shader_loader().map(|sl| sl.modrinth_name().to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+        ContentType::ResourcePack => None, // Resourcepacks use "minecraft" loader, no filter needed
+    };
+
+    store.get_versions(platform, &project_id, game_version.as_deref(), effective_loader.as_deref())
         .map_err(|e| e.to_string())
 }
 
@@ -692,21 +832,51 @@ pub fn store_install_cmd(input: StoreInstallInput) -> Result<Profile, String> {
         .transpose()?
         .unwrap_or(item.content_type);
 
-    // Get version
-    let version = if let Some(v_id) = input.version_id {
+    // Determine effective loader based on content type
+    let effective_loader: Option<String> = match ct {
+        ContentType::Mod | ContentType::ModPack => profile.loader.as_ref().map(|l| l.loader_type.clone()),
+        ContentType::ShaderPack => {
+            // For shaders, detect if the profile has iris/optifine installed
+            profile.primary_shader_loader().map(|sl| sl.modrinth_name().to_string())
+        }
+        ContentType::ResourcePack => None, // Resourcepacks use "minecraft" loader, no filter needed
+    };
+
+    let version = if let Some(v_id) = input.version_id.clone() {
         let versions = store.get_versions(platform, &input.project_id, None, None)
             .map_err(|e| e.to_string())?;
         versions.into_iter()
             .find(|v| v.version == v_id || v.id == v_id)
             .ok_or_else(|| "version not found".to_string())?
     } else {
-        let loader = profile.loader.as_ref().map(|l| l.loader_type.as_str());
-        store.get_latest_version(platform, &input.project_id, Some(&profile.mc_version), loader)
+        store.get_latest_version(platform, &input.project_id, Some(&profile.mc_version), effective_loader.as_deref())
             .map_err(|e| e.to_string())?
     };
 
     // Download and store
     let content_ref = store.download_to_store(&paths, &version, ct).map_err(|e| e.to_string())?;
+
+    // Auto-add to library
+    if let Ok(library) = Library::from_paths(&paths) {
+        let lib_content_type = match ct {
+            ContentType::Mod | ContentType::ModPack => "mod",
+            ContentType::ResourcePack => "resourcepack",
+            ContentType::ShaderPack => "shaderpack",
+        };
+        let hash = content_ref.hash.strip_prefix("sha256:").unwrap_or(&content_ref.hash);
+        let lib_input = LibraryItemInput {
+            hash: hash.to_string(),
+            content_type: Some(lib_content_type.to_string()),
+            name: Some(content_ref.name.clone()),
+            file_name: content_ref.file_name.clone(),
+            source_url: content_ref.source.clone(),
+            source_platform: Some(input.platform.clone()),
+            source_project_id: Some(input.project_id.clone()),
+            source_version: input.version_id.clone().or_else(|| Some(version.version.clone())),
+            ..Default::default()
+        };
+        let _ = library.add_item(&lib_input);
+    }
 
     // Add to profile
     match ct {
@@ -771,6 +941,38 @@ pub fn read_crash_report_cmd(profile_id: String, file: Option<String>) -> Result
     }
 
     std::fs::read_to_string(&crash_path).map_err(|e| e.to_string())
+}
+
+/// Start watching a log file and emit events for new entries
+#[tauri::command]
+pub async fn start_log_watch(
+    app: AppHandle,
+    profile_id: String,
+) -> Result<(), String> {
+    let paths = load_paths()?;
+    let log_path = paths.instance_latest_log(&profile_id);
+
+    // Spawn background task to watch the log
+    std::thread::spawn(move || {
+        let mut watcher = LogWatcher::from_start(log_path);
+
+        loop {
+            // Read new entries
+            match watcher.read_new() {
+                Ok(entries) if !entries.is_empty() => {
+                    // Emit event with new log entries
+                    if app.emit(&format!("log-entries-{}", profile_id), &entries).is_err() {
+                        break; // Window closed
+                    }
+                }
+                _ => {}
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+    });
+
+    Ok(())
 }
 
 // ============================================================================
@@ -856,4 +1058,214 @@ pub fn fetch_fabric_versions_cmd() -> Result<Vec<String>, String> {
 
     let versions: Vec<String> = entries.into_iter().map(|e| e.loader.version).collect();
     Ok(versions)
+}
+
+// ============================================================================
+// Java detection and validation commands
+// ============================================================================
+
+/// Detect all Java installations on the system.
+#[tauri::command]
+pub fn detect_java_installations_cmd() -> Vec<JavaInstallation> {
+    detect_installations()
+}
+
+/// Validate a specific Java path.
+#[tauri::command]
+pub fn validate_java_path_cmd(path: String) -> JavaValidation {
+    validate_java_path(&path)
+}
+
+/// Get the minimum required Java version for a Minecraft version.
+#[tauri::command]
+pub fn get_required_java_version_cmd(mc_version: String) -> u32 {
+    get_required_java_version(&mc_version)
+}
+
+/// Check if a Java version is compatible with a Minecraft version.
+#[tauri::command]
+pub fn check_java_compatibility_cmd(java_major: u32, mc_version: String) -> bool {
+    is_java_compatible(java_major, &mc_version)
+}
+
+// ============================================================================
+// Library commands
+// ============================================================================
+
+#[derive(Deserialize)]
+pub struct LibraryFilterInput {
+    pub content_type: Option<String>,
+    pub search: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
+#[derive(Deserialize)]
+pub struct LibraryItemUpdateInput {
+    pub name: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[tauri::command]
+pub fn library_list_items_cmd(filter: LibraryFilterInput) -> Result<Vec<LibraryItem>, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    let filter = LibraryFilter {
+        content_type: filter.content_type,
+        search: filter.search,
+        tags: filter.tags,
+        limit: filter.limit,
+        offset: filter.offset,
+    };
+    library.list_items(&filter).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_get_item_cmd(id: i64) -> Result<Option<LibraryItem>, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    library.get_item(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_get_item_by_hash_cmd(hash: String) -> Result<Option<LibraryItem>, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    library.get_item_by_hash(&hash).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_add_item_cmd(input: LibraryItemInput) -> Result<LibraryItem, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    library.add_item(&input).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_update_item_cmd(id: i64, input: LibraryItemUpdateInput) -> Result<LibraryItem, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    let item = library.get_item(id).map_err(|e| e.to_string())?
+        .ok_or_else(|| "item not found".to_string())?;
+    let update = LibraryItemInput {
+        hash: item.hash,
+        name: input.name,
+        notes: input.notes,
+        ..Default::default()
+    };
+    library.update_item(id, &update).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_delete_item_cmd(id: i64, delete_file: bool) -> Result<bool, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+
+    if delete_file {
+        if let Some(item) = library.get_item(id).map_err(|e| e.to_string())? {
+            let store_path = match item.content_type {
+                LibraryContentType::Mod => paths.store_mod_path(&item.hash),
+                LibraryContentType::ResourcePack => paths.store_resourcepack_path(&item.hash),
+                LibraryContentType::ShaderPack => paths.store_shaderpack_path(&item.hash),
+                LibraryContentType::Skin => paths.store_skin_path(&item.hash),
+            };
+            if store_path.exists() {
+                std::fs::remove_file(&store_path).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    library.delete_item(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_import_file_cmd(path: String, content_type: String) -> Result<LibraryItem, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    let ct = LibraryContentType::from_str(&content_type)
+        .ok_or_else(|| "invalid content type".to_string())?;
+    library.import_file(&paths, &PathBuf::from(path), ct).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_import_folder_cmd(path: String, content_type: String, recursive: bool) -> Result<ImportResult, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    let ct = LibraryContentType::from_str(&content_type)
+        .ok_or_else(|| "invalid content type".to_string())?;
+    library.import_folder(&paths, &PathBuf::from(path), ct, recursive).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_get_stats_cmd() -> Result<LibraryStats, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    library.stats().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_sync_cmd() -> Result<ImportResult, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    library.sync_with_store(&paths).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_list_tags_cmd() -> Result<Vec<Tag>, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    library.list_tags().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_create_tag_cmd(name: String, color: Option<String>) -> Result<Tag, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    library.create_tag(&name, color.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_delete_tag_cmd(id: i64) -> Result<bool, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    library.delete_tag(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_set_item_tags_cmd(item_id: i64, tag_names: Vec<String>) -> Result<(), String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    library.set_item_tags(item_id, &tag_names).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_add_to_profile_cmd(profile_id: String, item_id: i64) -> Result<Profile, String> {
+    let paths = load_paths()?;
+    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
+    let mut profile = load_profile(&paths, &profile_id).map_err(|e| e.to_string())?;
+
+    let item = library.get_item(item_id).map_err(|e| e.to_string())?
+        .ok_or_else(|| "item not found".to_string())?;
+
+    let content_ref = ContentRef {
+        name: item.name.clone(),
+        hash: format!("sha256:{}", item.hash),
+        version: item.source_version.clone(),
+        source: item.source_url.clone(),
+        file_name: item.file_name.clone(),
+    };
+
+    match item.content_type {
+        LibraryContentType::Mod => { upsert_mod(&mut profile, content_ref); }
+        LibraryContentType::ResourcePack => { upsert_resourcepack(&mut profile, content_ref); }
+        LibraryContentType::ShaderPack => { upsert_shaderpack(&mut profile, content_ref); }
+        LibraryContentType::Skin => return Err("skins cannot be added to profiles".to_string()),
+    };
+
+    // Link in library
+    library.link_item_to_profile(item_id, &profile_id, item.content_type).map_err(|e| e.to_string())?;
+
+    save_profile(&paths, &profile).map_err(|e| e.to_string())?;
+    Ok(profile)
 }

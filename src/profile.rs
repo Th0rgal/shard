@@ -196,6 +196,44 @@ pub fn delete_profile(paths: &Paths, id: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn rename_profile(paths: &Paths, id: &str, new_id: &str) -> Result<Profile> {
+    if id == new_id {
+        bail!("new profile ID is the same as the current one");
+    }
+    if paths.is_profile_present(new_id) {
+        bail!("profile already exists: {new_id}");
+    }
+
+    // Load and update the profile
+    let mut profile = load_profile(paths, id)
+        .with_context(|| format!("failed to load profile: {id}"))?;
+    profile.id = new_id.to_string();
+
+    // Create the new profile directory
+    let old_dir = paths.profiles.join(id);
+    let new_dir = paths.profiles.join(new_id);
+    fs::rename(&old_dir, &new_dir)
+        .with_context(|| format!("failed to rename profile directory: {} -> {}", old_dir.display(), new_dir.display()))?;
+
+    // Save the profile with the new ID
+    save_profile(paths, &profile)?;
+
+    // Rename instance directory if it exists
+    let old_instance = paths.instances.join(id);
+    let new_instance = paths.instances.join(new_id);
+    if old_instance.exists() {
+        fs::rename(&old_instance, &new_instance).with_context(|| {
+            format!(
+                "failed to rename instance directory: {} -> {}",
+                old_instance.display(),
+                new_instance.display()
+            )
+        })?;
+    }
+
+    Ok(profile)
+}
+
 fn upsert_content(list: &mut Vec<ContentRef>, new_item: ContentRef) -> bool {
     if list.iter().any(|m| m.hash == new_item.hash) {
         return false;
@@ -251,4 +289,65 @@ pub fn diff_profiles(a: &Profile, b: &Profile) -> (Vec<String>, Vec<String>, Vec
     let both = set_a.intersection(&set_b).cloned().collect::<Vec<_>>();
 
     (only_a, only_b, both)
+}
+
+/// Shader loader types that can be detected in a profile
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShaderLoader {
+    Iris,
+    Optifine,
+    Canvas,
+}
+
+impl ShaderLoader {
+    /// Get the Modrinth loader name for this shader loader
+    pub fn modrinth_name(&self) -> &'static str {
+        match self {
+            ShaderLoader::Iris => "iris",
+            ShaderLoader::Optifine => "optifine",
+            ShaderLoader::Canvas => "canvas",
+        }
+    }
+}
+
+impl Profile {
+    /// Detect which shader loader(s) are available in this profile by checking installed mods.
+    /// Returns the detected shader loaders in order of preference.
+    pub fn detect_shader_loaders(&self) -> Vec<ShaderLoader> {
+        let mut loaders = Vec::new();
+
+        for mod_ref in &self.mods {
+            let name_lower = mod_ref.name.to_lowercase();
+            let source_lower = mod_ref.source.as_deref().unwrap_or("").to_lowercase();
+
+            // Check for Iris (also includes Iris+Sodium bundles)
+            if name_lower.contains("iris") || source_lower.contains("/iris") {
+                if !loaders.contains(&ShaderLoader::Iris) {
+                    loaders.push(ShaderLoader::Iris);
+                }
+            }
+
+            // Check for OptiFine
+            if name_lower.contains("optifine") || name_lower.contains("optifabric") {
+                if !loaders.contains(&ShaderLoader::Optifine) {
+                    loaders.push(ShaderLoader::Optifine);
+                }
+            }
+
+            // Check for Canvas
+            if name_lower.contains("canvas") || source_lower.contains("/canvas") {
+                if !loaders.contains(&ShaderLoader::Canvas) {
+                    loaders.push(ShaderLoader::Canvas);
+                }
+            }
+        }
+
+        loaders
+    }
+
+    /// Get the primary shader loader for this profile, if any.
+    /// Prefers Iris over OptiFine over Canvas.
+    pub fn primary_shader_loader(&self) -> Option<ShaderLoader> {
+        self.detect_shader_loaders().into_iter().next()
+    }
 }

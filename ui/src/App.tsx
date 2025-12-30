@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, lazy, Suspense } from "react";
+import { useEffect, useCallback, lazy, Suspense } from "react";
 import clsx from "clsx";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -7,13 +7,12 @@ import { openPath } from "@tauri-apps/plugin-opener";
 
 import { useAppStore } from "./store";
 import { useOnline } from "./hooks";
-import type { LaunchEvent, ContentRef, ContentTab, Account, Profile } from "./types";
+import type { LaunchEvent, ContentRef, ContentTab, Profile, LibraryItem } from "./types";
 import {
   ErrorBoundary,
   Sidebar,
   ProfileView,
-  AccountsView,
-  SettingsView,
+  AccountView,
   Toast,
   ConfirmDialog,
   CreateProfileModal,
@@ -24,12 +23,13 @@ import {
   LaunchPlanModal,
   ProfileJsonModal,
 } from "./components";
+import { formatContentName } from "./utils";
 import type { CreateProfileForm } from "./components";
 
 // Lazy load heavy components (three.js/skinview3d)
 const StoreView = lazy(() => import("./components/StoreView").then(m => ({ default: m.StoreView })));
 const LogsView = lazy(() => import("./components/LogsView").then(m => ({ default: m.LogsView })));
-const AccountDetailsModal = lazy(() => import("./components/modals/AccountDetailsModal").then(m => ({ default: m.AccountDetailsModal })));
+const LibraryView = lazy(() => import("./components/LibraryView").then(m => ({ default: m.LibraryView })));
 
 const NO_DRAG_SELECTOR = [
   "button",
@@ -77,9 +77,6 @@ function App() {
 
   // Content modal state
   const contentKind = useAppStore((s) => s.activeTab);
-
-  // Account details modal state
-  const [selectedAccountForDetails, setSelectedAccountForDetails] = useState<string | null>(null);
 
   // Initial load
   useEffect(() => {
@@ -151,6 +148,8 @@ function App() {
       const dragRegion = target.closest(".titlebar-drag-region, [data-tauri-drag-region='true'], .drag-region");
       if (!dragRegion) return;
       if (target.closest(NO_DRAG_SELECTOR)) return;
+      // Don't interfere with HTML5 drag operations (e.g., sidebar profile reordering)
+      if (target.closest("[draggable='true']")) return;
 
       e.preventDefault();
 
@@ -203,27 +202,23 @@ function App() {
     });
   }, [runAction, loadProfiles, setSelectedProfileId, setActiveModal]);
 
-  const handleAddContent = useCallback(async (input: string, name: string | null, version: string | null) => {
+  const handleAddContentFromLibrary = useCallback(async (item: LibraryItem) => {
     if (!selectedProfileId) return;
     await runAction(async () => {
-      const payload = {
+      await invoke<Profile>("library_add_to_profile_cmd", {
         profile_id: selectedProfileId,
-        input,
-        name,
-        version,
-      };
-      if (contentKind === "mods") await invoke("add_mod_cmd", payload);
-      else if (contentKind === "resourcepacks") await invoke("add_resourcepack_cmd", payload);
-      else await invoke("add_shaderpack_cmd", payload);
+        item_id: item.id,
+      });
       await loadProfile(selectedProfileId);
       setActiveModal(null);
+      notify("Added", `${formatContentName(item.name)} added to profile`);
     });
-  }, [selectedProfileId, contentKind, runAction, loadProfile, setActiveModal]);
+  }, [selectedProfileId, runAction, loadProfile, setActiveModal, notify]);
 
   const handleRemoveContent = useCallback((item: ContentRef) => {
     if (!selectedProfileId) return;
     setConfirmState({
-      title: `Remove ${item.name}?`,
+      title: `Remove ${formatContentName(item.name)}?`,
       message: "This removes it from the profile but keeps the stored file.",
       confirmLabel: "Remove",
       tone: "danger",
@@ -284,30 +279,6 @@ function App() {
     notify("Copied", command);
   }, [selectedProfileId, notify]);
 
-  const handleSetActiveAccount = useCallback(async (id: string) => {
-    await runAction(async () => {
-      await invoke("set_active_account_cmd", { id });
-      await loadAccounts();
-      useAppStore.setState({ selectedAccountId: id });
-    });
-  }, [runAction, loadAccounts]);
-
-  const handleRemoveAccount = useCallback((account: Account) => {
-    setConfirmState({
-      title: `Remove ${account.username}?`,
-      message: "This account will be disconnected from Shard.",
-      confirmLabel: "Remove",
-      tone: "danger",
-      onConfirm: async () => {
-        setConfirmState(null);
-        await runAction(async () => {
-          await invoke("remove_account_cmd", { id: account.uuid });
-          await loadAccounts();
-        });
-      },
-    });
-  }, [setConfirmState, runAction, loadAccounts]);
-
   const handleDeleteProfile = useCallback((id: string) => {
     setConfirmState({
       title: `Delete ${id}?`,
@@ -327,18 +298,6 @@ function App() {
     });
   }, [setConfirmState, runAction, loadProfiles, selectedProfileId, setSelectedProfileId]);
 
-  const handleSaveConfig = useCallback(async () => {
-    const { config } = useAppStore.getState();
-    await runAction(async () => {
-      const updated = await invoke<typeof config>("save_config_cmd", {
-        client_id: config?.msa_client_id ?? null,
-        client_secret: config?.msa_client_secret ?? null,
-      });
-      useAppStore.setState({ config: updated });
-      notify("Settings saved");
-    });
-  }, [runAction, notify]);
-
   const handleDeviceCodeSuccess = useCallback(async () => {
     await loadAccounts();
   }, [loadAccounts]);
@@ -346,11 +305,6 @@ function App() {
   const openAddContentModal = useCallback((kind: ContentTab) => {
     useAppStore.setState({ activeTab: kind });
     setActiveModal("add-content");
-  }, [setActiveModal]);
-
-  const handleViewAccountDetails = useCallback((account: Account) => {
-    setSelectedAccountForDetails(account.uuid);
-    setActiveModal("account-details");
   }, [setActiveModal]);
 
   return (
@@ -409,16 +363,7 @@ function App() {
                 )}
 
                 {sidebarView === "accounts" && (
-                  <AccountsView
-                    onSetActive={handleSetActiveAccount}
-                    onRemove={handleRemoveAccount}
-                    onAdd={() => setActiveModal("device-code")}
-                    onViewDetails={handleViewAccountDetails}
-                  />
-                )}
-
-                {sidebarView === "settings" && (
-                  <SettingsView onSave={handleSaveConfig} />
+                  <AccountView onAddAccount={() => setActiveModal("device-code")} />
                 )}
 
                 {sidebarView === "store" && (
@@ -430,6 +375,12 @@ function App() {
                 {sidebarView === "logs" && (
                   <Suspense fallback={<div className="loading-view">Loading logs...</div>}>
                     <LogsView />
+                  </Suspense>
+                )}
+
+                {sidebarView === "library" && (
+                  <Suspense fallback={<div className="loading-view">Loading library...</div>}>
+                    <LibraryView />
                   </Suspense>
                 )}
               </ErrorBoundary>
@@ -469,7 +420,7 @@ function App() {
           open={activeModal === "add-content"}
           kind={contentKind}
           onClose={() => setActiveModal(null)}
-          onSubmit={handleAddContent}
+          onAddFromLibrary={handleAddContentFromLibrary}
         />
 
         <DeviceCodeModal
@@ -489,17 +440,6 @@ function App() {
           profile={profile}
           onClose={() => setActiveModal(null)}
         />
-
-        <Suspense fallback={null}>
-          <AccountDetailsModal
-            open={activeModal === "account-details"}
-            accountId={selectedAccountForDetails}
-            onClose={() => {
-              setActiveModal(null);
-              setSelectedAccountForDetails(null);
-            }}
-          />
-        </Suspense>
 
         {confirmState && (
           <ConfirmDialog state={confirmState} onClose={() => setConfirmState(null)} />

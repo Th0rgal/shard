@@ -4,6 +4,9 @@ use shard::accounts::{load_accounts, remove_account, save_accounts, set_active};
 use shard::auth::request_device_code;
 use shard::config::{load_config, save_config};
 use shard::content_store::{ContentStore, ContentType, Platform, SearchOptions};
+use shard::library::{
+    Library, LibraryContentType, LibraryFilter, LibraryItemInput,
+};
 use shard::logs::{
     filter_by_level, format_entry, list_crash_reports, list_log_files, read_log_file,
     read_log_tail, search_logs, watch_log, LogLevel,
@@ -12,9 +15,9 @@ use shard::minecraft::{launch, prepare};
 use shard::ops::{finish_device_code_flow, parse_loader, resolve_input, resolve_launch_account};
 use shard::paths::Paths;
 use shard::profile::{
-    ContentRef, Loader, Runtime, clone_profile, create_profile, diff_profiles, list_profiles,
-    load_profile, remove_mod, remove_resourcepack, remove_shaderpack, save_profile, upsert_mod,
-    upsert_resourcepack, upsert_shaderpack,
+    ContentRef, Loader, Runtime, clone_profile, create_profile, delete_profile, diff_profiles,
+    list_profiles, load_profile, remove_mod, remove_resourcepack, remove_shaderpack, rename_profile,
+    save_profile, upsert_mod, upsert_resourcepack, upsert_shaderpack,
 };
 use shard::skin::{
     get_active_cape, get_active_skin, get_avatar_url, get_body_url, get_profile as get_mc_profile,
@@ -79,6 +82,11 @@ enum Command {
         #[command(subcommand)]
         command: LogsCommand,
     },
+    /// Content library management
+    Library {
+        #[command(subcommand)]
+        command: LibraryCommand,
+    },
     /// Configuration
     Config {
         #[command(subcommand)]
@@ -115,10 +123,21 @@ enum ProfileCommand {
     },
     /// Clone an existing profile
     Clone { src: String, dst: String },
+    /// Rename a profile
+    Rename {
+        /// Current profile ID
+        id: String,
+        /// New profile ID
+        new_id: String,
+    },
     /// Diff two profiles by mod names
     Diff { a: String, b: String },
     /// Print a profile manifest
     Show { id: String },
+    /// Delete a profile
+    Delete { id: String },
+    /// List all profiles
+    List,
 }
 
 #[derive(Subcommand, Debug)]
@@ -410,6 +429,102 @@ enum ConfigCommand {
     SetCurseforgeKey { api_key: String },
 }
 
+#[derive(Subcommand, Debug)]
+enum LibraryCommand {
+    /// List library items
+    List {
+        /// Content type filter (mod, resourcepack, shaderpack, skin)
+        #[arg(long, short = 't')]
+        content_type: Option<String>,
+        /// Search by name
+        #[arg(long, short = 's')]
+        search: Option<String>,
+        /// Filter by tag
+        #[arg(long)]
+        tag: Option<Vec<String>>,
+        /// Maximum results
+        #[arg(long, default_value = "50")]
+        limit: u32,
+    },
+    /// Show details of a library item
+    Show {
+        /// Item ID or hash
+        id: String,
+    },
+    /// Import a file or folder into the library
+    Import {
+        /// Path to file or folder
+        path: PathBuf,
+        /// Content type (mod, resourcepack, shaderpack, skin)
+        #[arg(long, short = 't')]
+        content_type: String,
+        /// Recursive import for folders
+        #[arg(long, short = 'r')]
+        recursive: bool,
+    },
+    /// Remove an item from the library
+    Remove {
+        /// Item ID or hash
+        id: String,
+        /// Also delete the file from the content store
+        #[arg(long)]
+        delete_file: bool,
+    },
+    /// Update an item's metadata
+    Update {
+        /// Item ID or hash
+        id: String,
+        /// New name
+        #[arg(long)]
+        name: Option<String>,
+        /// Notes
+        #[arg(long)]
+        notes: Option<String>,
+    },
+    /// Show library statistics
+    Stats,
+    /// Sync library with content store
+    Sync,
+    /// Tag management
+    Tag {
+        #[command(subcommand)]
+        command: TagCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum TagCommand {
+    /// List all tags
+    List,
+    /// Create a new tag
+    Create {
+        /// Tag name
+        name: String,
+        /// Tag color (hex)
+        #[arg(long)]
+        color: Option<String>,
+    },
+    /// Delete a tag
+    Delete {
+        /// Tag name
+        name: String,
+    },
+    /// Add a tag to an item
+    Add {
+        /// Item ID or hash
+        item: String,
+        /// Tag name
+        tag: String,
+    },
+    /// Remove a tag from an item
+    Remove {
+        /// Item ID or hash
+        item: String,
+        /// Tag name
+        tag: String,
+    },
+}
+
 fn main() {
     if let Err(err) = run() {
         eprintln!("error: {err}");
@@ -501,6 +616,24 @@ fn run() -> Result<()> {
                 let data = serde_json::to_string_pretty(&profile)?;
                 println!("{data}");
             }
+            ProfileCommand::Rename { id, new_id } => {
+                rename_profile(&paths, &id, &new_id)?;
+                println!("renamed profile {id} -> {new_id}");
+            }
+            ProfileCommand::Delete { id } => {
+                delete_profile(&paths, &id)?;
+                println!("deleted profile {id}");
+            }
+            ProfileCommand::List => {
+                let profiles = list_profiles(&paths)?;
+                if profiles.is_empty() {
+                    println!("no profiles");
+                } else {
+                    for id in profiles {
+                        println!("{id}");
+                    }
+                }
+            }
         },
         Command::Mod { command } => match command {
             ModCommand::Add {
@@ -558,6 +691,7 @@ fn run() -> Result<()> {
         Command::Template { command } => handle_template_command(&paths, command)?,
         Command::Store { command } => handle_store_command(&paths, command)?,
         Command::Logs { command } => handle_logs_command(&paths, command)?,
+        Command::Library { command } => handle_library_command(&paths, command)?,
         Command::Config { command } => match command {
             ConfigCommand::Show => {
                 let config = load_config(&paths)?;
@@ -628,7 +762,7 @@ fn handle_pack_command(paths: &Paths, kind: ContentKind, command: PackCommand) -
             let changed = match kind {
                 ContentKind::ResourcePack => upsert_resourcepack(&mut profile_data, pack_ref),
                 ContentKind::ShaderPack => upsert_shaderpack(&mut profile_data, pack_ref),
-                ContentKind::Mod => false,
+                ContentKind::Mod | ContentKind::Skin => false,
             };
             save_profile(paths, &profile_data)?;
             if changed {
@@ -642,7 +776,7 @@ fn handle_pack_command(paths: &Paths, kind: ContentKind, command: PackCommand) -
             let changed = match kind {
                 ContentKind::ResourcePack => remove_resourcepack(&mut profile_data, &target),
                 ContentKind::ShaderPack => remove_shaderpack(&mut profile_data, &target),
-                ContentKind::Mod => false,
+                ContentKind::Mod | ContentKind::Skin => false,
             };
             if changed {
                 save_profile(paths, &profile_data)?;
@@ -656,7 +790,7 @@ fn handle_pack_command(paths: &Paths, kind: ContentKind, command: PackCommand) -
             let list = match kind {
                 ContentKind::ResourcePack => profile_data.resourcepacks,
                 ContentKind::ShaderPack => profile_data.shaderpacks,
-                ContentKind::Mod => Vec::new(),
+                ContentKind::Mod | ContentKind::Skin => Vec::new(),
             };
             if list.is_empty() {
                 println!("no packs in profile {profile}");
@@ -1083,6 +1217,20 @@ fn handle_store_command(paths: &Paths, command: StoreCommand) -> Result<()> {
             let item = store.get_project(platform.into(), &project)?;
             let ct = content_type.map(ContentType::from).unwrap_or(item.content_type);
 
+            // Determine effective loader based on content type
+            let effective_loader: Option<String> = match ct {
+                ContentType::Mod | ContentType::ModPack => {
+                    profile_data.loader.as_ref().map(|l| l.loader_type.clone())
+                }
+                ContentType::ShaderPack => {
+                    // For shaders, detect if profile has iris/optifine installed
+                    profile_data
+                        .primary_shader_loader()
+                        .map(|sl| sl.modrinth_name().to_string())
+                }
+                ContentType::ResourcePack => None,
+            };
+
             // Get version
             let ver = if let Some(v) = version {
                 let versions = store.get_versions(platform.into(), &project, None, None)?;
@@ -1091,13 +1239,11 @@ fn handle_store_command(paths: &Paths, command: StoreCommand) -> Result<()> {
                     .find(|ver| ver.version == v || ver.id == v)
                     .context("version not found")?
             } else {
-                // Get compatible version based on profile
-                let loader = profile_data.loader.as_ref().map(|l| l.loader_type.as_str());
                 store.get_latest_version(
                     platform.into(),
                     &project,
                     Some(&profile_data.mc_version),
-                    loader,
+                    effective_loader.as_deref(),
                 )?
             };
 
@@ -1462,4 +1608,253 @@ fn level_priority(level: LogLevel) -> u8 {
         LogLevel::Fatal => 4,
         LogLevel::Unknown => 1,
     }
+}
+
+fn handle_library_command(paths: &Paths, command: LibraryCommand) -> Result<()> {
+    let library = Library::from_paths(paths)?;
+
+    match command {
+        LibraryCommand::List {
+            content_type,
+            search,
+            tag,
+            limit,
+        } => {
+            let filter = LibraryFilter {
+                content_type,
+                search,
+                tags: tag,
+                limit: Some(limit),
+                offset: None,
+            };
+            let items = library.list_items(&filter)?;
+            if items.is_empty() {
+                println!("no items in library");
+            } else {
+                for item in items {
+                    let tags_str = if item.tags.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            " [{}]",
+                            item.tags.iter().map(|t| &t.name).cloned().collect::<Vec<_>>().join(", ")
+                        )
+                    };
+                    println!(
+                        "{}\t{}\t{}{}\t{}",
+                        item.id,
+                        item.content_type.as_str(),
+                        item.name,
+                        tags_str,
+                        &item.hash[..16]
+                    );
+                }
+            }
+        }
+        LibraryCommand::Show { id } => {
+            let item = if let Ok(id_num) = id.parse::<i64>() {
+                library.get_item(id_num)?
+            } else {
+                library.get_item_by_hash(&id)?
+            };
+
+            match item {
+                Some(item) => {
+                    println!("ID: {}", item.id);
+                    println!("Hash: {}", item.hash);
+                    println!("Type: {}", item.content_type.label());
+                    println!("Name: {}", item.name);
+                    if let Some(file_name) = &item.file_name {
+                        println!("File: {file_name}");
+                    }
+                    if let Some(size) = item.file_size {
+                        println!("Size: {} bytes", size);
+                    }
+                    if let Some(platform) = &item.source_platform {
+                        println!("Source: {platform}");
+                    }
+                    if let Some(url) = &item.source_url {
+                        println!("URL: {url}");
+                    }
+                    println!("Added: {}", item.added_at);
+                    println!("Updated: {}", item.updated_at);
+                    if !item.tags.is_empty() {
+                        println!(
+                            "Tags: {}",
+                            item.tags.iter().map(|t| &t.name).cloned().collect::<Vec<_>>().join(", ")
+                        );
+                    }
+                    if !item.used_by_profiles.is_empty() {
+                        println!("Used by: {}", item.used_by_profiles.join(", "));
+                    }
+                    if let Some(notes) = &item.notes {
+                        println!("Notes: {notes}");
+                    }
+                }
+                None => bail!("item not found: {id}"),
+            }
+        }
+        LibraryCommand::Import {
+            path,
+            content_type,
+            recursive,
+        } => {
+            let ct = LibraryContentType::from_str(&content_type)
+                .context("invalid content type; use: mod, resourcepack, shaderpack, skin")?;
+
+            if path.is_dir() {
+                let result = library.import_folder(paths, &path, ct, recursive)?;
+                println!(
+                    "imported {} items, skipped {} (already in library)",
+                    result.added, result.skipped
+                );
+                if !result.errors.is_empty() {
+                    println!("errors:");
+                    for err in result.errors {
+                        println!("  {err}");
+                    }
+                }
+            } else {
+                let item = library.import_file(paths, &path, ct)?;
+                println!("imported {} ({})", item.name, item.hash);
+            }
+        }
+        LibraryCommand::Remove { id, delete_file } => {
+            let item = if let Ok(id_num) = id.parse::<i64>() {
+                library.get_item(id_num)?
+            } else {
+                library.get_item_by_hash(&id)?
+            };
+
+            match item {
+                Some(item) => {
+                    if delete_file {
+                        // Delete from content store
+                        let store_path = match item.content_type {
+                            LibraryContentType::Mod => paths.store_mod_path(&item.hash),
+                            LibraryContentType::ResourcePack => {
+                                paths.store_resourcepack_path(&item.hash)
+                            }
+                            LibraryContentType::ShaderPack => paths.store_shaderpack_path(&item.hash),
+                            LibraryContentType::Skin => paths.store_skin_path(&item.hash),
+                        };
+                        if store_path.exists() {
+                            std::fs::remove_file(&store_path)?;
+                            println!("deleted file from store");
+                        }
+                    }
+                    library.delete_item(item.id)?;
+                    println!("removed {} from library", item.name);
+                }
+                None => bail!("item not found: {id}"),
+            }
+        }
+        LibraryCommand::Update { id, name, notes } => {
+            let item = if let Ok(id_num) = id.parse::<i64>() {
+                library.get_item(id_num)?
+            } else {
+                library.get_item_by_hash(&id)?
+            };
+
+            match item {
+                Some(item) => {
+                    let input = LibraryItemInput {
+                        hash: item.hash,
+                        name,
+                        notes,
+                        ..Default::default()
+                    };
+                    let updated = library.update_item(item.id, &input)?;
+                    println!("updated {}", updated.name);
+                }
+                None => bail!("item not found: {id}"),
+            }
+        }
+        LibraryCommand::Stats => {
+            let stats = library.stats()?;
+            println!("Library Statistics:");
+            println!("  Total items: {}", stats.total_items);
+            println!("  Mods: {}", stats.mods_count);
+            println!("  Resource packs: {}", stats.resourcepacks_count);
+            println!("  Shader packs: {}", stats.shaderpacks_count);
+            println!("  Skins: {}", stats.skins_count);
+            println!("  Total size: {} bytes", stats.total_size);
+            println!("  Tags: {}", stats.tags_count);
+        }
+        LibraryCommand::Sync => {
+            let result = library.sync_with_store(paths)?;
+            println!(
+                "synced library: {} added, {} already present",
+                result.added, result.skipped
+            );
+            if !result.errors.is_empty() {
+                println!("errors:");
+                for err in result.errors {
+                    println!("  {err}");
+                }
+            }
+        }
+        LibraryCommand::Tag { command } => handle_tag_command(&library, command)?,
+    }
+
+    Ok(())
+}
+
+fn handle_tag_command(library: &Library, command: TagCommand) -> Result<()> {
+    match command {
+        TagCommand::List => {
+            let tags = library.list_tags()?;
+            if tags.is_empty() {
+                println!("no tags defined");
+            } else {
+                for tag in tags {
+                    let color = tag.color.as_deref().unwrap_or("-");
+                    println!("{}\t{}", tag.name, color);
+                }
+            }
+        }
+        TagCommand::Create { name, color } => {
+            let tag = library.create_tag(&name, color.as_deref())?;
+            println!("created tag: {}", tag.name);
+        }
+        TagCommand::Delete { name } => {
+            if library.delete_tag_by_name(&name)? {
+                println!("deleted tag: {name}");
+            } else {
+                bail!("tag not found: {name}");
+            }
+        }
+        TagCommand::Add { item, tag } => {
+            let library_item = if let Ok(id_num) = item.parse::<i64>() {
+                library.get_item(id_num)?
+            } else {
+                library.get_item_by_hash(&item)?
+            };
+
+            match library_item {
+                Some(library_item) => {
+                    library.add_tag_to_item(library_item.id, &tag)?;
+                    println!("added tag '{}' to {}", tag, library_item.name);
+                }
+                None => bail!("item not found: {item}"),
+            }
+        }
+        TagCommand::Remove { item, tag } => {
+            let library_item = if let Ok(id_num) = item.parse::<i64>() {
+                library.get_item(id_num)?
+            } else {
+                library.get_item_by_hash(&item)?
+            };
+
+            match library_item {
+                Some(library_item) => {
+                    library.remove_tag_from_item(library_item.id, &tag)?;
+                    println!("removed tag '{}' from {}", tag, library_item.name);
+                }
+                None => bail!("item not found: {item}"),
+            }
+        }
+    }
+
+    Ok(())
 }

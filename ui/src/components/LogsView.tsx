@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import clsx from "clsx";
 import { useAppStore } from "../store";
 import type { LogEntry, LogFile, LogLevel } from "../types";
@@ -16,6 +17,9 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
   unknown: "var(--text-muted)",
 };
 
+// Keep max entries to avoid memory issues
+const MAX_LOG_ENTRIES = 2000;
+
 export function LogsView() {
   const { selectedProfileId, notify } = useAppStore();
   const [tab, setTab] = useState<LogTab>("latest");
@@ -27,33 +31,15 @@ export function LogsView() {
   const [filter, setFilter] = useState("");
   const [minLevel, setMinLevel] = useState<LogLevel>("info");
   const [autoScroll, setAutoScroll] = useState(true);
-  const logsEndRef = useRef<HTMLDivElement>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Load latest log
-  const loadLatestLog = useCallback(async () => {
-    if (!selectedProfileId) return;
-    setLoading(true);
-    try {
-      const entries = await invoke<LogEntry[]>("read_logs_cmd", {
-        profileId: selectedProfileId,
-        fileName: "latest.log",
-        tail: 500,
-      });
-      setLogs(entries);
-    } catch (err) {
-      // File might not exist yet
-      setLogs([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedProfileId]);
+  const [watching, setWatching] = useState(false);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const unlistenRef = useRef<UnlistenFn | null>(null);
 
   // Load log file list
   const loadLogFiles = useCallback(async () => {
     if (!selectedProfileId) return;
     try {
-      const files = await invoke<LogFile[]>("list_log_files_cmd", { profileId: selectedProfileId });
+      const files = await invoke<LogFile[]>("list_log_files_cmd", { profile_id: selectedProfileId });
       setLogFiles(files);
     } catch {
       setLogFiles([]);
@@ -64,7 +50,7 @@ export function LogsView() {
   const loadCrashReports = useCallback(async () => {
     if (!selectedProfileId) return;
     try {
-      const files = await invoke<LogFile[]>("list_crash_reports_cmd", { profileId: selectedProfileId });
+      const files = await invoke<LogFile[]>("list_crash_reports_cmd", { profile_id: selectedProfileId });
       setCrashReports(files);
     } catch {
       setCrashReports([]);
@@ -78,8 +64,8 @@ export function LogsView() {
     try {
       if (tab === "crashes") {
         const content = await invoke<string>("read_crash_report_cmd", {
-          profileId: selectedProfileId,
-          fileName: file.name,
+          profile_id: selectedProfileId,
+          file: file.name,
         });
         // Parse crash report as single entry
         setLogs([{
@@ -92,9 +78,9 @@ export function LogsView() {
         }]);
       } else {
         const entries = await invoke<LogEntry[]>("read_logs_cmd", {
-          profileId: selectedProfileId,
-          fileName: file.name,
-          tail: null,
+          profile_id: selectedProfileId,
+          file: file.name,
+          lines: null,
         });
         setLogs(entries);
       }
@@ -105,34 +91,69 @@ export function LogsView() {
     }
   }, [selectedProfileId, tab, notify]);
 
-  // Initial load and polling
+  // Start real-time log watching
+  useEffect(() => {
+    if (!selectedProfileId || tab !== "latest") return;
+
+    let cancelled = false;
+
+    const startWatching = async () => {
+      setLoading(true);
+      setLogs([]);
+
+      try {
+        // Set up event listener for new log entries
+        const eventName = `log-entries-${selectedProfileId}`;
+        unlistenRef.current = await listen<LogEntry[]>(eventName, (event) => {
+          if (cancelled) return;
+          setLogs(prev => {
+            const newLogs = [...prev, ...event.payload];
+            // Keep only the last MAX_LOG_ENTRIES entries
+            if (newLogs.length > MAX_LOG_ENTRIES) {
+              return newLogs.slice(-MAX_LOG_ENTRIES);
+            }
+            return newLogs;
+          });
+        });
+
+        // Start the watcher on the backend
+        await invoke("start_log_watch", { profile_id: selectedProfileId });
+        setWatching(true);
+      } catch (err) {
+        console.error("Failed to start log watch:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void startWatching();
+
+    return () => {
+      cancelled = true;
+      setWatching(false);
+      if (unlistenRef.current) {
+        unlistenRef.current();
+        unlistenRef.current = null;
+      }
+    };
+  }, [selectedProfileId, tab]);
+
+  // Load history/crashes when switching tabs
   useEffect(() => {
     if (!selectedProfileId) return;
 
-    if (tab === "latest") {
-      void loadLatestLog();
-      // Poll for updates
-      pollIntervalRef.current = setInterval(() => {
-        void loadLatestLog();
-      }, 2000);
-    } else if (tab === "history") {
+    if (tab === "history") {
       void loadLogFiles();
-    } else {
+    } else if (tab === "crashes") {
       void loadCrashReports();
     }
+  }, [selectedProfileId, tab, loadLogFiles, loadCrashReports]);
 
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-    };
-  }, [selectedProfileId, tab, loadLatestLog, loadLogFiles, loadCrashReports]);
-
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom (within the logs container only)
   useEffect(() => {
-    if (autoScroll && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (autoScroll && logsContainerRef.current) {
+      const container = logsContainerRef.current;
+      container.scrollTop = container.scrollHeight;
     }
   }, [logs, autoScroll]);
 
@@ -159,7 +180,6 @@ export function LogsView() {
   if (!selectedProfileId) {
     return (
       <div className="view-transition">
-        <h1 className="page-title">Logs</h1>
         <div className="empty-state">
           <h3>No profile selected</h3>
           <p>Select a profile to view its logs.</p>
@@ -169,14 +189,9 @@ export function LogsView() {
   }
 
   return (
-    <div className="view-transition">
-      <h1 className="page-title">Logs</h1>
-      <p style={{ margin: "-24px 0 24px", fontSize: 14, color: "var(--text-secondary)" }}>
-        View game logs, history, and crash reports.
-      </p>
-
+    <div className="view-transition" style={{ overflow: "hidden" }}>
       {/* Tabs */}
-      <div className="content-tabs" style={{ marginBottom: 24 }}>
+      <div className="content-tabs" style={{ marginBottom: 12, flexShrink: 0 }}>
         <button
           className={clsx("content-tab", tab === "latest" && "active")}
           onClick={() => { setTab("latest"); setSelectedFile(null); }}
@@ -242,7 +257,7 @@ export function LogsView() {
       {(tab === "latest" || selectedFile) && (
         <>
           {/* Controls */}
-          <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "center", flexShrink: 0 }}>
             <input
               type="text"
               className="input"
@@ -284,6 +299,7 @@ export function LogsView() {
 
           {/* Log output */}
           <div
+            ref={logsContainerRef}
             className="logs-container"
             style={{
               background: "rgba(0, 0, 0, 0.3)",
@@ -293,7 +309,8 @@ export function LogsView() {
               fontFamily: "var(--font-mono)",
               fontSize: 12,
               lineHeight: 1.6,
-              maxHeight: 500,
+              flex: 1,
+              minHeight: 0,
               overflow: "auto",
             }}
           >
@@ -337,13 +354,14 @@ export function LogsView() {
                 <span>{entry.message}</span>
               </div>
             ))}
-            <div ref={logsEndRef} />
           </div>
 
           {/* Stats */}
-          <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-muted)" }}>
+          <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
             Showing {filteredLogs.length} of {logs.length} entries
-            {tab === "latest" && " (auto-refreshing every 2s)"}
+            {tab === "latest" && watching && (
+              <span style={{ marginLeft: 8, color: "var(--accent-success)" }}>● Live</span>
+            )}
           </div>
         </>
       )}

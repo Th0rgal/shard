@@ -170,12 +170,31 @@ pub fn delete_template(paths: &Paths, id: &str) -> Result<bool> {
     }
 }
 
+/// Create a built-in vanilla template
+pub fn create_vanilla_template() -> Template {
+    Template {
+        id: "vanilla".to_string(),
+        name: "Vanilla".to_string(),
+        description: "Pure Minecraft experience with no mods.".to_string(),
+        mc_version: "1.21.4".to_string(),
+        loader: None,
+        mods: vec![],
+        resourcepacks: vec![],
+        shaderpacks: vec![],
+        runtime: TemplateRuntime {
+            java: None,
+            memory: Some("2G".to_string()),
+            args: vec![],
+        },
+    }
+}
+
 /// Create a built-in default template for optimized Fabric gameplay
 pub fn create_default_template() -> Template {
     Template {
-        id: "optimized-fabric".to_string(),
-        name: "Optimized Fabric".to_string(),
-        description: "A clean Fabric setup with Sodium, Iris, and Distant Horizons for optimal performance and visuals.".to_string(),
+        id: "default".to_string(),
+        name: "Default".to_string(),
+        description: "Optimized Fabric with Sodium, Iris, and performance mods.".to_string(),
         mc_version: "1.21.4".to_string(),
         loader: Some(TemplateLoader {
             loader_type: "fabric".to_string(),
@@ -199,9 +218,9 @@ pub fn create_default_template() -> Template {
                 required: true,
             },
             TemplateContent {
-                name: "Distant Horizons".to_string(),
+                name: "Lithium".to_string(),
                 source: ContentSource::Modrinth {
-                    project: "distanthorizons".to_string(),
+                    project: "lithium".to_string(),
                 },
                 version: None,
                 required: true,
@@ -220,28 +239,11 @@ pub fn create_default_template() -> Template {
                     project: "modmenu".to_string(),
                 },
                 version: None,
-                required: false,
-            },
-            TemplateContent {
-                name: "Lithium".to_string(),
-                source: ContentSource::Modrinth {
-                    project: "lithium".to_string(),
-                },
-                version: None,
-                required: false,
+                required: true,
             },
         ],
         resourcepacks: vec![],
-        shaderpacks: vec![
-            TemplateContent {
-                name: "Complementary Reimagined".to_string(),
-                source: ContentSource::Modrinth {
-                    project: "complementary-reimagined".to_string(),
-                },
-                version: None,
-                required: false,
-            },
-        ],
+        shaderpacks: vec![],
         runtime: TemplateRuntime {
             java: None,
             memory: Some("4G".to_string()),
@@ -256,8 +258,14 @@ pub fn init_builtin_templates(paths: &Paths) -> Result<()> {
     fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create templates directory: {}", dir.display()))?;
 
+    // Create vanilla template if not present
+    if !paths.is_template_present("vanilla") {
+        let template = create_vanilla_template();
+        save_template(paths, &template)?;
+    }
+
     // Create default optimized Fabric template if not present
-    if !paths.is_template_present("optimized-fabric") {
+    if !paths.is_template_present("default") {
         let template = create_default_template();
         save_template(paths, &template)?;
     }

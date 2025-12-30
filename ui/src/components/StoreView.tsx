@@ -1,56 +1,117 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import { useAppStore } from "../store";
-import { Field } from "./Field";
 import type { StoreProject, StoreVersion } from "../types";
 import { formatDownloads, formatFileSize } from "../utils";
 
 type StoreCategory = "mods" | "resourcepacks" | "shaderpacks";
 
+// Map UI category to backend content_type
+const CATEGORY_TO_CONTENT_TYPE: Record<StoreCategory, string> = {
+  mods: "mod",
+  resourcepacks: "resourcepack",
+  shaderpacks: "shaderpack",
+};
+
 interface StoreSearchInput {
   query: string;
-  category: StoreCategory;
+  content_type: string;
   game_version?: string | null;
   loader?: string | null;
   limit?: number;
 }
 
+// Module-level cache for popular results (persists across re-renders)
+const popularCache: Record<StoreCategory, StoreProject[]> = {
+  mods: [],
+  resourcepacks: [],
+  shaderpacks: [],
+};
+const cacheLoading: Record<StoreCategory, boolean> = {
+  mods: false,
+  resourcepacks: false,
+  shaderpacks: false,
+};
+
 export function StoreView() {
   const { profile, selectedProfileId, loadProfile, notify } = useAppStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<StoreCategory>("mods");
-  const [results, setResults] = useState<StoreProject[]>([]);
+  const [searchResults, setSearchResults] = useState<StoreProject[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedProject, setSelectedProject] = useState<StoreProject | null>(null);
   const [versions, setVersions] = useState<StoreVersion[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [, forceUpdate] = useState(0);
+
+  // Load popular content for current category
+  useEffect(() => {
+    const loadPopular = async () => {
+      if (popularCache[category].length > 0 || cacheLoading[category]) return;
+
+      cacheLoading[category] = true;
+      try {
+        const input: StoreSearchInput = {
+          query: "",
+          content_type: CATEGORY_TO_CONTENT_TYPE[category],
+          game_version: null,
+          loader: null,
+          limit: 5,
+        };
+        const data = await invoke<StoreProject[]>("store_search_cmd", { input });
+        popularCache[category] = data;
+        forceUpdate(n => n + 1);
+      } catch {
+        // Silently fail for popular results
+      } finally {
+        cacheLoading[category] = false;
+      }
+    };
+
+    loadPopular();
+  }, [category]);
+
+  // Results to display: search results if searching, otherwise cached popular
+  const displayResults = searchResults ?? popularCache[category];
+  const isShowingPopular = searchResults === null && displayResults.length > 0;
 
   const handleSearch = useCallback(async () => {
-    if (!query.trim()) return;
+    if (!query.trim()) {
+      setSearchResults(null);
+      return;
+    }
 
     setLoading(true);
-    setResults([]);
+    setSearchResults([]);
     setSelectedProject(null);
     setVersions([]);
 
     try {
       const input: StoreSearchInput = {
         query: query.trim(),
-        category,
+        content_type: CATEGORY_TO_CONTENT_TYPE[category],
         game_version: profile?.mcVersion ?? null,
         loader: profile?.loader?.type ?? null,
         limit: 20,
       };
       const data = await invoke<StoreProject[]>("store_search_cmd", { input });
-      setResults(data);
+      setSearchResults(data);
     } catch (err) {
       notify("Search failed", String(err));
     } finally {
       setLoading(false);
     }
   }, [query, category, profile, notify]);
+
+  const handleCategoryChange = useCallback((newCategory: StoreCategory) => {
+    setCategory(newCategory);
+    setSearchResults(null);
+    setQuery("");
+    setSelectedProject(null);
+    setVersions([]);
+  }, []);
 
   const handleSelectProject = useCallback(async (project: StoreProject) => {
     setSelectedProject(project);
@@ -59,10 +120,11 @@ export function StoreView() {
 
     try {
       const data = await invoke<StoreVersion[]>("store_get_versions_cmd", {
-        projectId: project.id,
-        source: project.source,
-        gameVersion: profile?.mcVersion ?? null,
+        project_id: project.id,
+        platform: project.platform,
+        game_version: profile?.mcVersion ?? null,
         loader: profile?.loader?.type ?? null,
+        profile_id: selectedProfileId ?? null,
       });
       setVersions(data);
     } catch (err) {
@@ -70,7 +132,7 @@ export function StoreView() {
     } finally {
       setLoadingVersions(false);
     }
-  }, [profile, notify]);
+  }, [profile, selectedProfileId, notify]);
 
   const handleInstall = useCallback(async (version: StoreVersion) => {
     if (!selectedProfileId || !selectedProject) return;
@@ -79,14 +141,14 @@ export function StoreView() {
     try {
       const input = {
         profile_id: selectedProfileId,
-        source: selectedProject.source,
+        platform: selectedProject.platform,
         project_id: selectedProject.id,
         version_id: version.id,
-        category,
+        content_type: CATEGORY_TO_CONTENT_TYPE[category],
       };
       await invoke("store_install_cmd", { input });
       await loadProfile(selectedProfileId);
-      notify("Installed", `${selectedProject.name} v${version.version_number}`);
+      notify("Installed", `${selectedProject.name} v${version.version}`);
     } catch (err) {
       notify("Install failed", String(err));
     } finally {
@@ -95,36 +157,31 @@ export function StoreView() {
   }, [selectedProfileId, selectedProject, category, loadProfile, notify]);
 
   return (
-    <div className="view-transition">
-      <h1 className="page-title">Content Store</h1>
-      <p style={{ margin: "-24px 0 24px", fontSize: 14, color: "var(--text-secondary)" }}>
-        Browse and install mods, resource packs, and shaders from Modrinth and CurseForge.
-      </p>
-
+    <div className="view-transition" style={{ marginRight: -40, paddingRight: 40 }}>
       {/* Category tabs */}
-      <div className="content-tabs" style={{ marginBottom: 24 }}>
+      <div className="content-tabs" style={{ marginBottom: 16 }}>
         <button
           className={clsx("content-tab", category === "mods" && "active")}
-          onClick={() => setCategory("mods")}
+          onClick={() => handleCategoryChange("mods")}
         >
           Mods
         </button>
         <button
           className={clsx("content-tab", category === "resourcepacks" && "active")}
-          onClick={() => setCategory("resourcepacks")}
+          onClick={() => handleCategoryChange("resourcepacks")}
         >
           Resource Packs
         </button>
         <button
           className={clsx("content-tab", category === "shaderpacks" && "active")}
-          onClick={() => setCategory("shaderpacks")}
+          onClick={() => handleCategoryChange("shaderpacks")}
         >
           Shaders
         </button>
       </div>
 
       {/* Search bar */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
         <input
           type="text"
           className="input"
@@ -146,7 +203,7 @@ export function StoreView() {
       {/* Version context */}
       {profile && (
         <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 20 }}>
-          Showing results compatible with Minecraft {profile.mcVersion}
+          {isShowingPopular ? "Popular" : "Results"} compatible with Minecraft {profile.mcVersion}
           {profile.loader && ` + ${profile.loader.type}`}
         </p>
       )}
@@ -170,16 +227,20 @@ export function StoreView() {
       <div style={{ display: "flex", gap: 24 }}>
         {/* Results list */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {results.length === 0 && !loading && query && (
+          {displayResults.length === 0 && !loading && searchResults !== null && (
             <div className="empty-state" style={{ padding: 40 }}>
               <h3>No results</h3>
               <p>Try a different search term or category.</p>
             </div>
           )}
 
-          {results.map((project) => (
+          {displayResults.length === 0 && !loading && searchResults === null && cacheLoading[category] && (
+            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading popular {category}...</p>
+          )}
+
+          {displayResults.map((project) => (
             <div
-              key={`${project.source}-${project.id}`}
+              key={`${project.platform}-${project.id}`}
               className={clsx("content-item", selectedProject?.id === project.id && "selected")}
               onClick={() => handleSelectProject(project)}
               style={{
@@ -234,18 +295,17 @@ export function StoreView() {
                     {project.description}
                   </p>
                   <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}>
-                    <span>by {project.author}</span>
-                    <span>{formatDownloads(project.download_count)} downloads</span>
+                    <span>{formatDownloads(project.downloads)} downloads</span>
                     <span
                       style={{
-                        background: project.source === "modrinth" ? "rgba(30, 215, 96, 0.15)" : "rgba(246, 96, 54, 0.15)",
-                        color: project.source === "modrinth" ? "#1ed760" : "#f66036",
+                        background: project.platform === "modrinth" ? "rgba(30, 215, 96, 0.15)" : "rgba(246, 96, 54, 0.15)",
+                        color: project.platform === "modrinth" ? "#1ed760" : "#f66036",
                         padding: "1px 6px",
                         borderRadius: 4,
                         fontWeight: 500,
                       }}
                     >
-                      {project.source}
+                      {project.platform}
                     </span>
                   </div>
                 </div>
@@ -303,9 +363,9 @@ export function StoreView() {
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{version.version_number}</div>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{version.version}</div>
                         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                          {formatFileSize(version.file_size)} &middot; {version.game_versions.slice(0, 3).join(", ")}
+                          {formatFileSize(version.size)} &middot; {version.game_versions.slice(0, 3).join(", ")}
                           {version.game_versions.length > 3 && ` +${version.game_versions.length - 3}`}
                         </div>
                       </div>

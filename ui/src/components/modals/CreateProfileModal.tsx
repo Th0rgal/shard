@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import clsx from "clsx";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "../Modal";
 import { ModalFooter } from "../ModalFooter";
 import { Field } from "../Field";
 import { useAppStore } from "../../store";
-import type { ManifestVersion, MinecraftVersionsResponse, Template } from "../../types";
+import type { Template, MinecraftVersionsResponse, ManifestVersion } from "../../types";
 
 interface CreateProfileModalProps {
   open: boolean;
@@ -25,33 +25,37 @@ export interface CreateProfileForm {
 }
 
 export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileModalProps) {
-  const { mcVersions, mcVersionLoading, loaderVersions, loaderLoading, setMcVersions, setMcVersionLoading, setLoaderVersions, setLoaderLoading, notify } = useAppStore();
+  const { notify } = useAppStore();
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [creationMode, setCreationMode] = useState<"blank" | "template">("blank");
-
-  const [form, setForm] = useState<CreateProfileForm>({
-    id: "",
-    mcVersion: "",
-    loaderType: "",
-    loaderVersion: "",
-    java: "",
-    memory: "",
-    args: "",
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("default");
+  const [profileName, setProfileName] = useState("");
+  const [mcVersion, setMcVersion] = useState("");
+  const [mcVersions, setMcVersions] = useState<ManifestVersion[]>([]);
+  const [mcVersionsLoading, setMcVersionsLoading] = useState(false);
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const [error, setError] = useState("");
 
-  const visibleVersions = useMemo(() => {
-    return mcVersions.filter((entry) => showSnapshots || entry.type === "release");
-  }, [mcVersions, showSnapshots]);
+  // Load Minecraft versions
+  const loadMcVersions = useCallback(async () => {
+    setMcVersionsLoading(true);
+    try {
+      const response = await invoke<MinecraftVersionsResponse>("fetch_minecraft_versions_cmd");
+      setMcVersions(response.versions);
+      // Set default to latest release if not already set
+      if (!mcVersion && response.latest_release) {
+        setMcVersion(response.latest_release);
+      }
+    } catch (err) {
+      console.error("Failed to load MC versions:", err);
+    } finally {
+      setMcVersionsLoading(false);
+    }
+  }, [mcVersion]);
 
-  const latestRelease = useMemo(() => {
-    return mcVersions.find((entry) => entry.type === "release")?.id;
-  }, [mcVersions]);
-
-  // Load templates
+  // Load templates when modal opens
   const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
     try {
       const ids = await invoke<string[]>("list_templates_cmd");
       const loaded: Template[] = [];
@@ -63,243 +67,269 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
           // Skip invalid templates
         }
       }
+      // Sort to put "default" first, then "vanilla", then alphabetically
+      loaded.sort((a, b) => {
+        if (a.id === "default") return -1;
+        if (b.id === "default") return 1;
+        if (a.id === "vanilla") return -1;
+        if (b.id === "vanilla") return 1;
+        return a.name.localeCompare(b.name);
+      });
       setTemplates(loaded);
+
+      // Auto-select "default" if available and set its MC version
+      if (loaded.some(t => t.id === "default")) {
+        setSelectedTemplateId("default");
+        const defaultTemplate = loaded.find(t => t.id === "default");
+        if (defaultTemplate?.mc_version) {
+          setMcVersion(defaultTemplate.mc_version);
+        }
+      } else if (loaded.length > 0) {
+        setSelectedTemplateId(loaded[0].id);
+        if (loaded[0].mc_version) {
+          setMcVersion(loaded[0].mc_version);
+        }
+      }
     } catch (err) {
       console.error("Failed to load templates:", err);
+      notify("Failed to load templates", String(err));
+    } finally {
+      setTemplatesLoading(false);
     }
-  }, []);
+  }, [notify]);
 
   useEffect(() => {
     if (open) {
       void loadTemplates();
+      void loadMcVersions();
+      setProfileName("");
+      setError("");
     }
-  }, [open, loadTemplates]);
+  }, [open, loadTemplates, loadMcVersions]);
 
-  useEffect(() => {
-    if (open && mcVersions.length === 0) {
-      fetchMinecraftVersions();
-    }
-  }, [open, mcVersions.length]);
-
-  useEffect(() => {
-    if (open && form.loaderType === "fabric" && loaderVersions.length === 0 && !loaderLoading) {
-      fetchLoaderVersions();
-    }
-  }, [open, form.loaderType, loaderVersions.length, loaderLoading]);
-
-  useEffect(() => {
-    if (open) {
-      setForm({ id: "", mcVersion: "", loaderType: "", loaderVersion: "", java: "", memory: "", args: "", templateId: null });
-      setErrors({});
-      setCreationMode("blank");
-      setSelectedTemplate(null);
-    }
-  }, [open]);
-
-  // Apply template values when selected
-  const handleSelectTemplate = (template: Template | null) => {
-    setSelectedTemplate(template);
-    if (template) {
-      setForm((prev) => ({
-        ...prev,
-        mcVersion: template.mc_version,
-        loaderType: template.loader?.type ?? "",
-        loaderVersion: template.loader?.version ?? "",
-        templateId: template.id,
-      }));
-      // Fetch loader versions if needed
-      if (template.loader?.type === "fabric" && loaderVersions.length === 0 && !loaderLoading) {
-        fetchLoaderVersions();
-      }
-    }
-  };
-
-  const fetchMinecraftVersions = async () => {
-    setMcVersionLoading(true);
-    try {
-      const data = await invoke<MinecraftVersionsResponse>("fetch_minecraft_versions_cmd");
-      setMcVersions(data.versions);
-      if (!form.mcVersion && data.latest_release) {
-        setForm((prev) => ({ ...prev, mcVersion: data.latest_release! }));
-      }
-    } catch (err) {
-      console.error("Failed to fetch Minecraft versions:", err);
-      notify("Failed to fetch Minecraft versions", String(err));
-    } finally {
-      setMcVersionLoading(false);
-    }
-  };
-
-  const fetchLoaderVersions = async () => {
-    setLoaderLoading(true);
-    try {
-      const versions = await invoke<string[]>("fetch_fabric_versions_cmd");
-      setLoaderVersions(versions);
-    } catch (err) {
-      console.error("Failed to fetch Fabric versions:", err);
-      notify("Failed to fetch Fabric versions", String(err));
-    } finally {
-      setLoaderLoading(false);
+  // Update MC version when template changes
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    const template = templates.find(t => t.id === templateId);
+    if (template?.mc_version) {
+      setMcVersion(template.mc_version);
     }
   };
 
   const handleSubmit = async () => {
-    const newErrors: Record<string, string> = {};
-    if (!form.id.trim()) newErrors.id = "Required";
-    if (!form.mcVersion.trim()) newErrors.mcVersion = "Required";
-    if (form.loaderType && !form.loaderVersion.trim()) newErrors.loaderVersion = "Required";
-    setErrors(newErrors);
-    if (Object.keys(newErrors).length > 0) return;
+    // Validation
+    if (!profileName.trim()) {
+      setError("Profile name is required");
+      return;
+    }
+
+    if (!mcVersion.trim()) {
+      setError("Minecraft version is required");
+      return;
+    }
+
+    const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+    if (!selectedTemplate) {
+      setError("Please select a template");
+      return;
+    }
+
+    // Build form from template with user-selected MC version
+    const form: CreateProfileForm = {
+      id: profileName.trim(),
+      mcVersion: mcVersion.trim(),
+      loaderType: selectedTemplate.loader?.type ?? "",
+      loaderVersion: selectedTemplate.loader?.version ?? "",
+      java: "",
+      memory: selectedTemplate.runtime?.memory ?? "",
+      args: selectedTemplate.runtime?.args?.join(" ") ?? "",
+      templateId: selectedTemplate.id,
+    };
 
     await onSubmit(form);
   };
 
+  const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+
+  // Filter versions based on showSnapshots toggle
+  const filteredVersions = showSnapshots
+    ? mcVersions
+    : mcVersions.filter(v => v.type === "release");
+
   return (
-    <Modal open={open} onClose={onClose} title="Create profile">
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* Creation mode selector */}
-        <div className="content-tabs" style={{ marginBottom: 8 }}>
-          <button
-            className={clsx("content-tab", creationMode === "blank" && "active")}
-            onClick={() => {
-              setCreationMode("blank");
-              setSelectedTemplate(null);
-              setForm((prev) => ({ ...prev, templateId: null }));
-            }}
-          >
-            Blank Profile
-          </button>
-          <button
-            className={clsx("content-tab", creationMode === "template" && "active")}
-            onClick={() => setCreationMode("template")}
-          >
-            From Template
-            {templates.length > 0 && <span className="count">{templates.length}</span>}
-          </button>
+    <Modal open={open} onClose={onClose} title="New profile">
+      <div className="create-profile-modal">
+        {/* Template grid */}
+        <div className="template-section">
+          <label className="field-label">Template</label>
+          {templatesLoading ? (
+            <div className="template-loading">Loading templates...</div>
+          ) : templates.length === 0 ? (
+            <div className="template-empty">No templates available</div>
+          ) : (
+            <div className="template-grid">
+              {templates.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className={clsx("template-card", selectedTemplateId === template.id && "selected")}
+                  onClick={() => handleTemplateSelect(template.id)}
+                >
+                  <span className="template-card-name">{template.name}</span>
+                  {selectedTemplateId === template.id && (
+                    <span className="template-card-check">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          {selectedTemplate && (
+            <p className="template-description">{selectedTemplate.description}</p>
+          )}
         </div>
 
-        {/* Template selector */}
-        {creationMode === "template" && (
-          <div style={{ marginBottom: 8 }}>
-            {templates.length === 0 ? (
-              <div
-                style={{
-                  background: "rgba(255, 255, 255, 0.03)",
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: 12,
-                  padding: 20,
-                  textAlign: "center",
-                }}
-              >
-                <p style={{ color: "var(--text-muted)", margin: 0, fontSize: 13 }}>
-                  No templates available. Create templates via CLI using <code style={{ fontSize: 11 }}>shard template</code>.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {templates.map((template) => (
-                  <div
-                    key={template.id}
-                    className="content-item"
-                    onClick={() => handleSelectTemplate(template)}
-                    style={{
-                      cursor: "pointer",
-                      background: selectedTemplate?.id === template.id ? "rgba(124, 199, 255, 0.1)" : undefined,
-                      borderColor: selectedTemplate?.id === template.id ? "rgba(124, 199, 255, 0.2)" : undefined,
-                    }}
-                  >
-                    <div className="content-item-info">
-                      <h5 style={{ margin: 0 }}>{template.name}</h5>
-                      <p style={{ margin: "4px 0 0", fontSize: 12 }}>
-                        {template.description}
-                      </p>
-                      <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--text-muted)" }}>
-                        MC {template.mc_version}
-                        {template.loader && ` • ${template.loader.type}`}
-                        {template.mods.length > 0 && ` • ${template.mods.length} mods`}
-                        {template.shaderpacks.length > 0 && ` • ${template.shaderpacks.length} shaders`}
-                      </p>
-                    </div>
-                    {selectedTemplate?.id === template.id && (
-                      <div style={{ color: "var(--accent-primary)", fontSize: 18 }}>✓</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Minecraft version selector */}
+        <Field label="Minecraft version">
+          <div className="version-row">
+            <select
+              className="select"
+              value={mcVersion}
+              onChange={(e) => setMcVersion(e.target.value)}
+              disabled={mcVersionsLoading}
+            >
+              {mcVersionsLoading ? (
+                <option>Loading...</option>
+              ) : (
+                filteredVersions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.id}
+                  </option>
+                ))
+              )}
+            </select>
+            <label className="snapshots-toggle">
+              <input
+                type="checkbox"
+                checked={showSnapshots}
+                onChange={(e) => setShowSnapshots(e.target.checked)}
+              />
+              <span>Snapshots</span>
+            </label>
           </div>
-        )}
+        </Field>
 
-        <Field label="Profile ID" error={errors.id}>
+        {/* Profile name */}
+        <Field label="Profile name" error={error}>
           <input
-            className={clsx("input", errors.id && "input-error")}
-            value={form.id}
-            onChange={(e) => setForm({ ...form, id: e.target.value })}
-            placeholder="my-modpack"
+            className={clsx("input", error && "input-error")}
+            value={profileName}
+            onChange={(e) => {
+              setProfileName(e.target.value);
+              setError("");
+            }}
+            placeholder="my-world"
+            autoFocus
           />
         </Field>
-        <Field label="Minecraft version" error={errors.mcVersion}>
-          <select
-            className={clsx("input", errors.mcVersion && "input-error")}
-            value={form.mcVersion}
-            onChange={(e) => setForm({ ...form, mcVersion: e.target.value })}
-          >
-            <option value="">{mcVersionLoading ? "Loading…" : "Select version"}</option>
-            {visibleVersions.map((v) => (
-              <option key={v.id} value={v.id}>{v.id}{v.type === "snapshot" ? " (snapshot)" : ""}</option>
-            ))}
-          </select>
-          <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-            <button type="button" className="link" onClick={() => setShowSnapshots(!showSnapshots)}>
-              {showSnapshots ? "Hide snapshots" : "Show snapshots"}
-            </button>
-            {latestRelease && (
-              <button type="button" className="link" onClick={() => setForm((p) => ({ ...p, mcVersion: latestRelease }))}>
-                Use latest ({latestRelease})
-              </button>
-            )}
-          </div>
-        </Field>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Loader" error={errors.loaderType}>
-            <select
-              className="input"
-              value={form.loaderType || "none"}
-              onChange={(e) => setForm((p) => ({
-                ...p,
-                loaderType: e.target.value === "none" ? "" : e.target.value,
-                loaderVersion: e.target.value === "none" ? "" : p.loaderVersion,
-              }))}
-            >
-              <option value="none">None (Vanilla)</option>
-              <option value="fabric">Fabric</option>
-            </select>
-          </Field>
-          <Field label="Loader version" error={errors.loaderVersion}>
-            <select
-              className={clsx("input", errors.loaderVersion && "input-error")}
-              value={form.loaderVersion}
-              onChange={(e) => setForm({ ...form, loaderVersion: e.target.value })}
-              disabled={!form.loaderType}
-            >
-              <option value="">{loaderLoading ? "Loading…" : "Select version"}</option>
-              {loaderVersions.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </Field>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Java path (optional)">
-            <input className="input" value={form.java} onChange={(e) => setForm({ ...form, java: e.target.value })} placeholder="/usr/bin/java" />
-          </Field>
-          <Field label="Memory (optional)">
-            <input className="input" value={form.memory} onChange={(e) => setForm({ ...form, memory: e.target.value })} placeholder="4G" />
-          </Field>
-        </div>
-        <Field label="Extra JVM args (optional)">
-          <input className="input" value={form.args} onChange={(e) => setForm({ ...form, args: e.target.value })} placeholder="-Dfile.encoding=UTF-8" />
-        </Field>
+
         <ModalFooter onCancel={onClose} onSubmit={handleSubmit} submitLabel="Create" />
       </div>
+
+      <style>{`
+        .create-profile-modal {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        .template-section {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .template-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+        }
+
+        .template-card {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 14px 16px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--border-subtle);
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          text-align: left;
+        }
+
+        .template-card:hover {
+          background: rgba(255, 255, 255, 0.05);
+          border-color: var(--border-default);
+        }
+
+        .template-card.selected {
+          background: rgba(124, 199, 255, 0.1);
+          border-color: rgba(124, 199, 255, 0.3);
+        }
+
+        .template-card-name {
+          font-size: 14px;
+          font-weight: 500;
+          color: var(--text-primary);
+        }
+
+        .template-card-check {
+          color: var(--accent-primary);
+          font-size: 14px;
+        }
+
+        .template-description {
+          font-size: 12px;
+          color: var(--text-muted);
+          margin: 0;
+          padding: 0 2px;
+        }
+
+        .template-loading,
+        .template-empty {
+          padding: 24px;
+          text-align: center;
+          font-size: 13px;
+          color: var(--text-muted);
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid var(--border-subtle);
+          border-radius: 12px;
+        }
+
+        .version-row {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .version-row .select {
+          flex: 1;
+        }
+
+        .snapshots-toggle {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          font-size: 12px;
+          color: var(--text-muted);
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .snapshots-toggle input {
+          cursor: pointer;
+        }
+      `}</style>
     </Modal>
   );
 }

@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { useAppStore } from "../store";
 import type { ContentRef, ContentTab } from "../types";
-import { getContentTypeLabel, getContentTypeLabelPlural } from "../utils";
+import { getContentTypeLabel, getContentTypeLabelPlural, formatContentName, formatVersion, formatFileName } from "../utils";
 
 interface ProfileViewProps {
   onLaunch: () => void;
@@ -33,9 +33,6 @@ export function ProfileView({
 }: ProfileViewProps) {
   const {
     profile,
-    accounts,
-    selectedAccountId,
-    setSelectedAccountId,
     activeTab,
     setActiveTab,
     isWorking,
@@ -65,129 +62,112 @@ export function ProfileView({
     shaderpacks: profile.shaderpacks.length,
   };
 
+  const loaderLabel = profile.loader
+    ? `${profile.loader.type} ${profile.loader.version}`
+    : "Vanilla";
+
+  const settingsItems = [
+    { key: "Minecraft version", value: profile.mcVersion },
+    { key: "Mod loader", value: loaderLabel },
+    { key: "Memory", value: profile.runtime.memory },
+    { key: "Java path", value: profile.runtime.java, mono: true },
+  ].filter((item) => item.value);
+
   return (
     <div className="view-transition">
-      <h1 className="page-title">{profile.id}</h1>
-
-      <div className="setting-row">
-        <div className="setting-label">
-          <h4>Minecraft version</h4>
-          <p>Game version for this profile</p>
+      {/* Header with title, chips, and launch button */}
+      <div className="profile-header">
+        <div className="profile-header-info">
+          <h1 className="page-title">{profile.id}</h1>
+          <div className="profile-chips">
+            <span className="chip">{profile.mcVersion}</span>
+            <span className="chip">{loaderLabel}</span>
+          </div>
         </div>
-        <div className="setting-control">
-          <span style={{ fontSize: 14 }}>{profile.mcVersion}</span>
-        </div>
+        <button className="btn btn-primary" onClick={onLaunch} disabled={!activeAccount || isWorking}>
+          Launch
+        </button>
       </div>
 
-      <div className="setting-row">
-        <div className="setting-label">
-          <h4>Mod loader</h4>
-          <p>Framework for loading mods</p>
+      {/* Content section */}
+      <div className="section-panel">
+        <div className="section-header">
+          <span>Content</span>
+          <button className="link" onClick={() => onAddContent(activeTab)}>+ Add {getContentTypeLabel(activeTab)}</button>
         </div>
-        <div className="setting-control">
-          <span style={{ fontSize: 14 }}>{profile.loader ? `${profile.loader.type} ${profile.loader.version}` : "Vanilla"}</span>
-        </div>
-      </div>
 
-      {profile.runtime.memory && (
-        <div className="setting-row">
-          <div className="setting-label">
-            <h4>Memory</h4>
-            <p>Allocated RAM for the game</p>
-          </div>
-          <div className="setting-control">
-            <span style={{ fontSize: 14 }}>{profile.runtime.memory}</span>
-          </div>
-        </div>
-      )}
-
-      {profile.runtime.java && (
-        <div className="setting-row">
-          <div className="setting-label">
-            <h4>Java</h4>
-            <p>Custom Java runtime path</p>
-          </div>
-          <div className="setting-control">
-            <span style={{ fontSize: 14, fontFamily: "var(--font-mono)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>{profile.runtime.java}</span>
-          </div>
-        </div>
-      )}
-
-      <div className="setting-row" style={{ paddingTop: 24, paddingBottom: 24, borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 8 }}>
-        <div className="setting-label">
-          <h4>Launch game</h4>
-          <p>Select an account and start playing</p>
-        </div>
-        <div className="setting-control">
-          <select
-            className="select"
-            value={activeAccount?.uuid ?? ""}
-            onChange={(e) => setSelectedAccountId(e.target.value)}
-            style={{ minWidth: 140 }}
-          >
-            {accounts?.accounts.length ? (
-              accounts.accounts.map((a) => <option key={a.uuid} value={a.uuid}>{a.username}</option>)
-            ) : (
-              <option value="">No accounts</option>
-            )}
-          </select>
-          <button className="btn btn-primary" onClick={onLaunch} disabled={!activeAccount || isWorking}>
-            Launch
+        <div className="content-tabs">
+          <button className={clsx("content-tab", activeTab === "mods" && "active")} onClick={() => setActiveTab("mods")}>
+            Mods<span className="count">{contentCounts.mods}</span>
+          </button>
+          <button className={clsx("content-tab", activeTab === "resourcepacks" && "active")} onClick={() => setActiveTab("resourcepacks")}>
+            Resource Packs<span className="count">{contentCounts.resourcepacks}</span>
+          </button>
+          <button className={clsx("content-tab", activeTab === "shaderpacks" && "active")} onClick={() => setActiveTab("shaderpacks")}>
+            Shaders<span className="count">{contentCounts.shaderpacks}</span>
           </button>
         </div>
+
+        {contentItems.length === 0 ? (
+          <div className="empty-state-inline">
+            <span>No {getContentTypeLabelPlural(activeTab)} installed</span>
+            <button className="link" onClick={() => onAddContent(activeTab)}>+ Add</button>
+          </div>
+        ) : (
+          <div className="content-list">
+            {contentItems.map((item) => (
+              <div key={item.hash} className="content-item">
+                <div className="content-item-info">
+                  <h5>{formatContentName(item.name)}</h5>
+                  <p>
+                    {[
+                      formatVersion(item.version) && `v${formatVersion(item.version)}`,
+                      formatSource(item.source),
+                      formatFileName(item.file_name)
+                    ].filter(Boolean).join(" · ") || item.hash.slice(0, 12)}
+                  </p>
+                </div>
+                <div className="content-item-actions">
+                  <button className="btn btn-ghost btn-sm" onClick={() => onRemoveContent(item)}>Remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button className="btn btn-ghost btn-sm" onClick={onOpenInstance}>Open folder</button>
-        <button className="btn btn-ghost btn-sm" onClick={onCopyCommand}>Copy CLI command</button>
-        <button className="btn btn-ghost btn-sm" onClick={onPrepare}>View launch plan</button>
-        <button className="btn btn-ghost btn-sm" onClick={onShowJson}>View JSON</button>
-      </div>
-
-      <div className="section-header" style={{ marginTop: 40 }}>
-        <span>Content</span>
-        <button className="link" style={{ fontSize: 12 }} onClick={() => onAddContent(activeTab)}>+ Add {getContentTypeLabel(activeTab)}</button>
-      </div>
-
-      <div className="content-tabs">
-        <button className={clsx("content-tab", activeTab === "mods" && "active")} onClick={() => setActiveTab("mods")}>
-          Mods<span className="count">{contentCounts.mods}</span>
-        </button>
-        <button className={clsx("content-tab", activeTab === "resourcepacks" && "active")} onClick={() => setActiveTab("resourcepacks")}>
-          Resource Packs<span className="count">{contentCounts.resourcepacks}</span>
-        </button>
-        <button className={clsx("content-tab", activeTab === "shaderpacks" && "active")} onClick={() => setActiveTab("shaderpacks")}>
-          Shaders<span className="count">{contentCounts.shaderpacks}</span>
-        </button>
-      </div>
-
-      {contentItems.length === 0 ? (
-        <div className="empty-state">
-          <h3>No {getContentTypeLabelPlural(activeTab)} yet</h3>
-          <p>Add your first one to get started.</p>
-          <button className="btn btn-secondary btn-sm" onClick={() => onAddContent(activeTab)}>Add {getContentTypeLabel(activeTab)}</button>
+      {/* Settings section */}
+      <div className="section-panel">
+        <div className="section-header">
+          <span>Settings</span>
         </div>
-      ) : (
-        <div>
-          {contentItems.map((item) => (
-            <div key={item.hash} className="content-item">
-              <div className="content-item-info">
-                <h5>{item.name}</h5>
-                <p>
-                  {[
-                    item.version && `v${item.version}`,
-                    formatSource(item.source),
-                    item.file_name
-                  ].filter(Boolean).join(" · ") || item.hash.slice(0, 12)}
-                </p>
-              </div>
-              <div className="content-item-actions">
-                <button className="btn btn-ghost btn-sm" onClick={() => onRemoveContent(item)}>Remove</button>
-              </div>
+        <div className="settings-grid">
+          {settingsItems.map((item) => (
+            <div key={item.key} className="setting-row-compact">
+              <span className="setting-key">{item.key}</span>
+              <span
+                className={clsx("setting-value", item.mono && "mono")}
+                title={item.value ?? undefined}
+              >
+                {item.value}
+              </span>
             </div>
           ))}
         </div>
-      )}
+      </div>
+
+      {/* Actions section */}
+      <div className="section-panel">
+        <div className="section-header">
+          <span>Actions</span>
+        </div>
+        <div className="actions-row">
+          <button className="btn btn-ghost btn-sm" onClick={onOpenInstance}>Open folder</button>
+          <button className="btn btn-ghost btn-sm" onClick={onCopyCommand}>Copy CLI command</button>
+          <button className="btn btn-ghost btn-sm" onClick={onPrepare}>View launch plan</button>
+          <button className="btn btn-ghost btn-sm" onClick={onShowJson}>View JSON</button>
+        </div>
+      </div>
     </div>
   );
 }

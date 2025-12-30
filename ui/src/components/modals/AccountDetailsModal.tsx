@@ -1,16 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
+import clsx from "clsx";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../Modal";
 import { SkinViewer } from "../SkinViewer";
 import { Field } from "../Field";
-import type { AccountInfo, Cape } from "../../types";
+import type { AccountInfo, Cape, LibraryItem, LibraryFilter } from "../../types";
 
 interface AccountDetailsModalProps {
   open: boolean;
   accountId: string | null;
   onClose: () => void;
 }
+
+type SkinMode = "library" | "upload" | "url";
 
 export function AccountDetailsModal({ open: isOpen, accountId, onClose }: AccountDetailsModalProps) {
   const [info, setInfo] = useState<AccountInfo | null>(null);
@@ -20,6 +23,10 @@ export function AccountDetailsModal({ open: isOpen, accountId, onClose }: Accoun
   const [uploading, setUploading] = useState(false);
   const [skinVariant, setSkinVariant] = useState<"classic" | "slim">("classic");
   const [skinUrl, setSkinUrl] = useState("");
+  const [skinMode, setSkinMode] = useState<SkinMode>("library");
+  const [librarySkins, setLibrarySkins] = useState<LibraryItem[]>([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [selectedLibrarySkin, setSelectedLibrarySkin] = useState<LibraryItem | null>(null);
 
   const loadAccountInfo = useCallback(async () => {
     if (!accountId) return;
@@ -40,11 +47,30 @@ export function AccountDetailsModal({ open: isOpen, accountId, onClose }: Accoun
     }
   }, [accountId]);
 
+  const loadLibrarySkins = useCallback(async () => {
+    setLoadingLibrary(true);
+    try {
+      const filter: LibraryFilter = {
+        content_type: "skin",
+        limit: 50,
+      };
+      const items = await invoke<LibraryItem[]>("library_list_items_cmd", { filter });
+      setLibrarySkins(items);
+    } catch (err) {
+      console.error("Failed to load library skins:", err);
+    } finally {
+      setLoadingLibrary(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (isOpen && accountId) {
       void loadAccountInfo();
+      void loadLibrarySkins();
+      setSelectedLibrarySkin(null);
+      setSkinMode("library");
     }
-  }, [isOpen, accountId, loadAccountInfo]);
+  }, [isOpen, accountId, loadAccountInfo, loadLibrarySkins]);
 
   const handleUploadSkin = async () => {
     if (!accountId) return;
@@ -62,8 +88,29 @@ export function AccountDetailsModal({ open: isOpen, accountId, onClose }: Accoun
         id: accountId,
         path: file,
         variant: skinVariant,
+        save_to_library: true,
       });
       await loadAccountInfo();
+      await loadLibrarySkins();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleApplyLibrarySkin = async () => {
+    if (!accountId || !selectedLibrarySkin) return;
+
+    setUploading(true);
+    try {
+      await invoke("apply_library_skin_cmd", {
+        id: accountId,
+        item_id: selectedLibrarySkin.id,
+        variant: skinVariant,
+      });
+      await loadAccountInfo();
+      setSelectedLibrarySkin(null);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -134,6 +181,11 @@ export function AccountDetailsModal({ open: isOpen, accountId, onClose }: Accoun
 
   if (!isOpen) return null;
 
+  const activeSkin = info?.profile?.skins?.find((s) => s.state === "ACTIVE");
+  const activeCape = info?.profile?.capes?.find((c) => c.state === "ACTIVE");
+  const activeSkinUrl = activeSkin?.url || info?.skin_url || "";
+  const activeCapeUrl = activeCape?.url ?? (info?.profile ? null : info?.cape_url ?? null);
+
   return (
     <Modal open={isOpen} onClose={onClose} className="modal-lg">
       <h2 className="modal-title">{info?.username ?? "Account"}</h2>
@@ -164,8 +216,8 @@ export function AccountDetailsModal({ open: isOpen, accountId, onClose }: Accoun
           {/* 3D Skin Viewer */}
           <div style={{ flexShrink: 0 }}>
             <SkinViewer
-              skinUrl={info.skin_url}
-              capeUrl={info.profile?.capes?.find(c => c.state === "ACTIVE")?.url}
+              skinUrl={activeSkinUrl}
+              capeUrl={activeCapeUrl}
               width={200}
               height={320}
               animation="idle"
@@ -221,21 +273,116 @@ export function AccountDetailsModal({ open: isOpen, accountId, onClose }: Accoun
                   </div>
                 </Field>
 
-                {/* Upload skin */}
-                <div style={{ marginTop: 16 }}>
+                {/* Skin source tabs */}
+                <div className="content-tabs" style={{ marginTop: 16, marginBottom: 12 }}>
                   <button
-                    className="btn btn-primary"
-                    onClick={handleUploadSkin}
-                    disabled={uploading}
-                    style={{ width: "100%" }}
+                    className={clsx("content-tab", skinMode === "library" && "active")}
+                    onClick={() => setSkinMode("library")}
                   >
-                    {uploading ? "Uploading..." : "Upload Skin File"}
+                    Library
+                  </button>
+                  <button
+                    className={clsx("content-tab", skinMode === "upload" && "active")}
+                    onClick={() => setSkinMode("upload")}
+                  >
+                    Upload
+                  </button>
+                  <button
+                    className={clsx("content-tab", skinMode === "url" && "active")}
+                    onClick={() => setSkinMode("url")}
+                  >
+                    URL
                   </button>
                 </div>
 
+                {/* Library skins */}
+                {skinMode === "library" && (
+                  <div>
+                    {loadingLibrary ? (
+                      <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading skins...</p>
+                    ) : librarySkins.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: 16 }}>
+                        <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 12 }}>
+                          No skins in library yet.
+                        </p>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setSkinMode("upload")}
+                        >
+                          Upload a skin
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(4, 1fr)",
+                            gap: 8,
+                            maxHeight: 160,
+                            overflowY: "auto",
+                            marginBottom: 12,
+                          }}
+                        >
+                          {librarySkins.map((skin) => (
+                            <div
+                              key={skin.id}
+                              onClick={() => setSelectedLibrarySkin(skin)}
+                              style={{
+                                padding: 8,
+                                borderRadius: 8,
+                                cursor: "pointer",
+                                textAlign: "center",
+                                fontSize: 11,
+                                background: selectedLibrarySkin?.id === skin.id
+                                  ? "rgba(124, 199, 255, 0.15)"
+                                  : "rgba(255, 255, 255, 0.03)",
+                                border: selectedLibrarySkin?.id === skin.id
+                                  ? "1px solid rgba(124, 199, 255, 0.3)"
+                                  : "1px solid var(--border-subtle)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                              title={skin.name}
+                            >
+                              {skin.name}
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          className="btn btn-primary"
+                          onClick={handleApplyLibrarySkin}
+                          disabled={!selectedLibrarySkin || uploading}
+                          style={{ width: "100%" }}
+                        >
+                          {uploading ? "Applying..." : "Apply Selected Skin"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Upload skin */}
+                {skinMode === "upload" && (
+                  <div>
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleUploadSkin}
+                      disabled={uploading}
+                      style={{ width: "100%" }}
+                    >
+                      {uploading ? "Uploading..." : "Upload Skin File"}
+                    </button>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+                      Uploaded skins are automatically saved to your library.
+                    </p>
+                  </div>
+                )}
+
                 {/* Set from URL */}
-                <div style={{ marginTop: 16 }}>
-                  <Field label="Or set from URL">
+                {skinMode === "url" && (
+                  <Field label="Skin URL">
                     <div style={{ display: "flex", gap: 8 }}>
                       <input
                         type="text"
@@ -246,18 +393,18 @@ export function AccountDetailsModal({ open: isOpen, accountId, onClose }: Accoun
                         style={{ flex: 1 }}
                       />
                       <button
-                        className="btn btn-secondary"
+                        className="btn btn-primary"
                         onClick={handleSetSkinUrl}
                         disabled={!skinUrl.trim() || uploading}
                       >
-                        Set
+                        {uploading ? "..." : "Set"}
                       </button>
                     </div>
                   </Field>
-                </div>
+                )}
 
                 {/* Reset skin */}
-                <div style={{ marginTop: 24 }}>
+                <div style={{ marginTop: 20 }}>
                   <button
                     className="btn btn-ghost"
                     onClick={handleResetSkin}

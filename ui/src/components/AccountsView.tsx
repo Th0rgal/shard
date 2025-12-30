@@ -12,10 +12,10 @@ export function AccountsView({ onSetActive, onRemove, onAdd, onViewDetails }: Ac
   const { accounts, getActiveAccount } = useAppStore();
   const activeAccount = getActiveAccount();
 
-  // Get Crafatar avatar URL
+  // Get avatar URL from mc-heads.net
   const getAvatarUrl = (uuid: string) => {
     const cleanUuid = uuid.replace(/-/g, "");
-    return `https://crafatar.com/avatars/${cleanUuid}?size=64&overlay`;
+    return `https://mc-heads.net/avatar/${cleanUuid}/64`;
   };
 
   return (

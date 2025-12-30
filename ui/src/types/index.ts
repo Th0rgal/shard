@@ -99,7 +99,7 @@ export type ModalType =
   | "logs"
   | "store";
 
-export type SidebarView = "profiles" | "accounts" | "settings" | "store" | "logs";
+export type SidebarView = "profiles" | "accounts" | "store" | "logs" | "library";
 
 // Profile folder organization (UI-only, stored in localStorage)
 export type ProfileFolder = {
@@ -112,6 +112,7 @@ export type ProfileFolder = {
 export type ProfileOrganization = {
   folders: ProfileFolder[];
   ungrouped: string[]; // profile IDs not in any folder
+  favoriteProfile?: string | null; // the default/favorite profile to launch
 };
 
 // Skin/Cape types
@@ -164,6 +165,12 @@ export type TemplateContent = {
   required: boolean;
 };
 
+export type TemplateRuntime = {
+  java?: string | null;
+  memory?: string | null;
+  args?: string[];
+};
+
 export type Template = {
   id: string;
   name: string;
@@ -173,31 +180,60 @@ export type Template = {
   mods: TemplateContent[];
   resourcepacks: TemplateContent[];
   shaderpacks: TemplateContent[];
+  runtime?: TemplateRuntime | null;
 };
 
-// Content store types
+// Java detection types
+export type JavaInstallation = {
+  path: string;
+  version?: string | null;
+  major?: number | null;
+  vendor?: string | null;
+  arch?: string | null;
+  is_valid: boolean;
+};
+
+export type JavaValidation = {
+  is_valid: boolean;
+  version?: string | null;
+  major?: number | null;
+  vendor?: string | null;
+  arch?: string | null;
+  error?: string | null;
+};
+
+// Content store types - matches Rust ContentItem
 export type StoreProject = {
   id: string;
-  name: string;
   slug: string;
-  description: string;
-  icon_url?: string | null;
-  download_count: number;
-  source: "modrinth" | "curseforge";
-  categories: string[];
-  author: string;
-};
-
-export type StoreVersion = {
-  id: string;
   name: string;
-  version_number: string;
+  description: string;
+  body?: string | null;
+  icon_url?: string | null;
+  platform: "modrinth" | "curseforge";
+  content_type: "mod" | "resourcepack" | "shaderpack" | "modpack";
+  downloads: number;
+  updated: string;
+  categories: string[];
   game_versions: string[];
   loaders: string[];
+};
+
+// Content store version - matches Rust ContentVersion
+export type StoreVersion = {
+  id: string;
+  project_id: string;
+  name: string;
+  version: string;
   download_url: string;
-  file_name: string;
-  file_size: number;
-  published: string;
+  filename: string;
+  size: number;
+  sha256?: string | null;
+  sha1?: string | null;
+  platform: "modrinth" | "curseforge";
+  game_versions: string[];
+  loaders: string[];
+  release_type: string;
 };
 
 // Logs types
@@ -231,4 +267,55 @@ export type ConfirmState = {
 export type Toast = {
   title: string;
   detail?: string;
+};
+
+// Library types
+export type LibraryContentType = "mod" | "resourcepack" | "shaderpack" | "skin";
+
+export type LibraryTag = {
+  id: number;
+  name: string;
+  color?: string | null;
+};
+
+export type LibraryItem = {
+  id: number;
+  hash: string;
+  content_type: LibraryContentType;
+  name: string;
+  file_name?: string | null;
+  file_size?: number | null;
+  source_url?: string | null;
+  source_platform?: string | null;
+  source_project_id?: string | null;
+  source_version?: string | null;
+  added_at: string;
+  updated_at: string;
+  notes?: string | null;
+  tags: LibraryTag[];
+  used_by_profiles: string[];
+};
+
+export type LibraryFilter = {
+  content_type?: string;
+  search?: string;
+  tags?: string[];
+  limit?: number;
+  offset?: number;
+};
+
+export type LibraryStats = {
+  total_items: number;
+  mods_count: number;
+  resourcepacks_count: number;
+  shaderpacks_count: number;
+  skins_count: number;
+  total_size: number;
+  tags_count: number;
+};
+
+export type LibraryImportResult = {
+  added: number;
+  skipped: number;
+  errors: string[];
 };
