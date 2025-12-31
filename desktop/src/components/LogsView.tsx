@@ -33,6 +33,8 @@ export function LogsView() {
   const [watching, setWatching] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastEventAtRef = useRef<number>(0);
 
   const sanitizeEventSegment = useCallback((value: string) => (
     value.replace(/[^a-zA-Z0-9\-/:_]/g, "_")
@@ -103,6 +105,7 @@ export function LogsView() {
         const eventName = `log-entries-${sanitizeEventSegment(selectedProfileId)}`;
         unlistenRef.current = await listen<LogEntry[]>(eventName, (event) => {
           if (cancelled) return;
+          lastEventAtRef.current = Date.now();
           setLogs(prev => {
             const newLogs = [...prev, ...event.payload];
             if (newLogs.length > MAX_LOG_ENTRIES) {
@@ -114,8 +117,37 @@ export function LogsView() {
 
         await invoke("start_log_watch", { profile_id: selectedProfileId });
         setWatching(true);
-      } catch {
-        // Failed to start log watch
+
+        try {
+          const entries = await invoke<LogEntry[]>("read_logs_cmd", {
+            profile_id: selectedProfileId,
+            file: null,
+            lines: MAX_LOG_ENTRIES,
+          });
+          if (!cancelled) {
+            setLogs(entries);
+          }
+        } catch (err) {
+          console.warn("[logs] Failed to read initial logs:", err);
+        }
+
+        pollTimerRef.current = setInterval(async () => {
+          if (cancelled) return;
+          const now = Date.now();
+          if (now - lastEventAtRef.current < 1500) return;
+          try {
+            const entries = await invoke<LogEntry[]>("read_logs_cmd", {
+              profile_id: selectedProfileId,
+              file: null,
+              lines: MAX_LOG_ENTRIES,
+            });
+            setLogs(entries);
+          } catch (err) {
+            console.warn("[logs] Polling read failed:", err);
+          }
+        }, 1500);
+      } catch (err) {
+        console.warn("[logs] Failed to start log watch:", err);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -126,6 +158,10 @@ export function LogsView() {
     return () => {
       cancelled = true;
       setWatching(false);
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
