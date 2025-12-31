@@ -137,7 +137,12 @@ export function LauncherPreview() {
                 fill
                 sizes="(max-width: 640px) 100vw, 900px"
                 priority={index === 0}
-                className={`launcher-screenshot ${loadedImages.has(index) ? "loaded" : ""} ${currentIndex === index ? "active" : ""}`}
+                className="launcher-screenshot"
+                style={{
+                  objectFit: "contain",
+                  opacity: loadedImages.has(index) && currentIndex === index ? 1 : 0,
+                  transition: "opacity 0.5s ease",
+                }}
                 onLoad={() => handleImageLoad(index)}
                 onError={() => handleImageError(index)}
               />
@@ -213,16 +218,6 @@ const styles = `
     /* Actual screenshot dimensions: 1728x1328 (864x664 at 2x) */
     aspect-ratio: 1728 / 1328;
     background: rgb(18 17 16);
-  }
-
-  :global(.launcher-screenshot) {
-    object-fit: contain;
-    opacity: 0;
-    transition: opacity 0.5s ease;
-  }
-
-  :global(.launcher-screenshot.loaded.active) {
-    opacity: 1;
   }
 
   /* Floating navigation buttons */
