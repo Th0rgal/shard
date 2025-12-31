@@ -2,10 +2,6 @@
 # Capture screenshots of the Shard Launcher desktop app for the website
 # Usage: ./scripts/capture-screenshots.sh [page]
 #
-# Expected window dimensions: 1280x760 (default Tauri window size)
-# With 32px margin: 1344x824 at @1x, 2688x1648 at @2x retina
-# Aspect ratio used in LauncherPreview.tsx: 1344 / 824
-#
 # This script captures the Shard window WITH your actual macOS wallpaper,
 # preserving the native liquid glass/vibrancy effect in the sidebar.
 #

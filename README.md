@@ -1,102 +1,130 @@
 <p align="center">
-  <img src="logo.png" alt="Shard Launcher" width="256" height="256">
+  <img src="logo.png" alt="Shard Launcher" width="128" height="128">
 </p>
 
-<h1 align="center">Shard Launcher</h1>
+<h1 align="center">Shard</h1>
 
 <p align="center">
-  <strong>Reproducible profiles. One deduplicated library. Scriptable workflows.</strong><br>
-  <em>Open source. Built in Rust with Tauri.</em>
-</p>
-
-<p align="center">
-  <a href="https://github.com/Th0rgal/shard/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <a href="https://github.com/Th0rgal/shard"><img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20Tauri-orange.svg" alt="Built with Rust + Tauri"></a>
-  <a href="https://github.com/Th0rgal/shard/releases"><img src="https://img.shields.io/github/v/release/Th0rgal/shard?include_prereleases" alt="Release"></a>
+  <strong>A minimal, content-addressed Minecraft launcher</strong><br>
+  <em>CLI-first. Reproducible. Zero duplication.</em>
 </p>
 
 <p align="center">
-  <a href="#what-is-shard">What is Shard?</a> •
-  <a href="#why-shard">Why Shard?</a> •
+  <a href="#features">Features</a> •
   <a href="#installation">Installation</a> •
   <a href="#quick-start">Quick Start</a> •
+  <a href="#philosophy">Philosophy</a> •
   <a href="#commands">Commands</a>
-</p>
-
-<p align="center">
-  <img src="screenshot.webp" alt="Shard Launcher - Profile Overview" width="800">
 </p>
 
 ---
 
 ## What is Shard?
 
-Shard is an open-source Minecraft launcher with a global deduplicated library and declarative profiles (plain JSON). It materializes clean instances from a single source of truth, integrates with Modrinth and CurseForge, and supports scriptable workflows via a CLI, while providing a polished desktop experience. Built in Rust with Tauri for a fast, lightweight app.
+Shard is a Minecraft launcher that treats your game setup like code: **declarative**, **reproducible**, and **efficient**. Instead of copying mod files everywhere, Shard stores content once and references it by hash — like Git for your Minecraft mods.
 
-**Define profiles in plain JSON, install content from Modrinth/CurseForge, and launch clean instances without duplicating the same mods across every pack.**
+- **One mod file, infinite profiles** — mods are stored once, shared across all profiles
+- **Profiles are just JSON** — version control your setups, share them, diff them
+- **Works offline** — no launcher account required, no telemetry, your data stays local
+- **Modrinth & CurseForge** — search, browse, and install from both platforms
+- **Fabric & Forge** — loader support with automatic version resolution
 
-## Why Shard?
+## Features
 
-### Save Disk Space
-
-Install the same mod in 10 profiles, it's stored once. Shard uses a SHA-256 content-addressed store, so identical files are never duplicated. No more 50GB of redundant mod copies eating up your drive.
-
-### Reproducible Profiles
-
-Your entire setup is a single JSON file. Version control it with Git, share it with friends, diff changes between versions, restore it anytime. Profiles are declarative: the launcher materializes clean instances on demand.
-
-### No Hidden State
-
-Plain JSON on disk. Predictable directory layout. Fully inspectable (no magic sync, no mystery database files, no state you can't see). If something breaks, you can debug it yourself.
-
-### Fast & Lightweight
-
-A polished desktop UI for everyday play, backed by a serious CLI for scripting. Built in Rust with Tauri for minimal resource usage, responsive behavior, and fast startup.
-
-### Open Source & Private
-
-Inspect every line of code, contribute, or fork. No telemetry, no launcher account required. Your data stays local. Works offline after initial setup.
-
-### Features
-
-| Feature | What it means for you |
-|---------|----------------------|
-| **Content-Addressed Store** | Mods stored once by hash, shared across all profiles |
-| **Declarative Profiles** | JSON manifests you can version control and share |
-| **Multi-Account** | Switch Microsoft accounts instantly with secure token storage |
-| **Modrinth + CurseForge** | Search and install from both platforms in-app |
-| **All Mod Loaders** | Fabric, Forge, Quilt, NeoForge with automatic version resolution |
-| **CLI + Desktop** | Full-featured CLI for automation, polished UI for daily use |
+| Feature | Description |
+|---------|-------------|
+| **Content-Addressed Store** | Mods, resourcepacks, and shaderpacks stored by SHA-256 hash. No duplicates, ever. |
+| **Declarative Profiles** | JSON manifests that define exactly what goes into each instance. |
+| **Multi-Account** | Multiple Microsoft accounts with secure token storage. |
+| **Mod Platforms** | Native Modrinth and CurseForge integration for search and install. |
+| **Templates** | Create profiles from reusable templates (Fabric, Forge, vanilla). |
+| **Desktop UI** | Clean Tauri-based GUI for those who prefer clicking over typing. |
 
 ## Installation
 
-### Download
+### Prerequisites
 
-Get the latest release from the [download page](https://shard.thomas.md/download).
-
-- **macOS**: `.dmg` installer
-- **Windows**: `.msi` installer
-- **Linux**: `.AppImage` or `.deb` package
+- **Rust** (1.75+) — Install via [rustup.rs](https://rustup.rs)
+- **Bun** (or Node.js 18+) — For the desktop UI frontend
+- **Platform tools:**
+  - macOS: Xcode Command Line Tools (`xcode-select --install`)
+  - Linux: `build-essential`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`
+  - Windows: Visual Studio Build Tools with C++ workload
 
 ### Build from Source
 
-**Prerequisites:**
-- Rust 1.75+ ([rustup.rs](https://rustup.rs))
-- Bun or Node.js 18+
-- Platform tools: Xcode CLI (macOS), `build-essential` + GTK/WebKit dev libs (Linux), VS Build Tools (Windows)
-
 ```bash
-# Clone and build
+# Clone the repository
 git clone https://github.com/Th0rgal/shard.git
 cd shard
 
-# CLI only
-cd launcher && cargo build --release
+# Build CLI only
+cd launcher
+cargo build --release
 # Binary: target/release/shard
 
-# Desktop app
-cd desktop && bun install && cargo tauri build
-# Bundle: desktop/src-tauri/target/release/bundle/
+# Build Desktop App
+cd desktop
+bun install              # Install frontend dependencies
+cargo tauri build        # Build production app
+# App bundle: desktop/src-tauri/target/release/bundle/
+```
+
+### Install or Update
+
+**CLI (all platforms):**
+```bash
+# Install to ~/.local/bin (add to PATH if needed)
+mkdir -p ~/.local/bin
+cp target/release/shard ~/.local/bin/
+
+# Or install system-wide (requires sudo)
+sudo cp target/release/shard /usr/local/bin/
+
+# Verify installation
+shard --version
+```
+
+**Desktop App (macOS):**
+```bash
+# The app bundle is at:
+# target/release/bundle/macos/Shard Launcher.app
+
+# Install to Applications (replaces existing)
+rm -rf "/Applications/Shard Launcher.app"
+cp -r "target/release/bundle/macos/Shard Launcher.app" /Applications/
+
+# Or open directly
+open "target/release/bundle/macos/Shard Launcher.app"
+```
+
+**Desktop App (Linux):**
+```bash
+# AppImage (portable)
+chmod +x desktop/src-tauri/target/release/bundle/appimage/shard_*.AppImage
+./desktop/src-tauri/target/release/bundle/appimage/shard_*.AppImage
+
+# Or install .deb package
+sudo dpkg -i desktop/src-tauri/target/release/bundle/deb/shard_*.deb
+```
+
+**Desktop App (Windows):**
+```powershell
+# Run the MSI installer
+desktop\src-tauri\target\release\bundle\msi\Shard_*.msi
+
+# Or run the executable directly
+desktop\src-tauri\target\release\Shard.exe
+```
+
+### Development Mode
+
+```bash
+# Run CLI in development
+cd launcher && cargo run -- --help
+
+# Run Desktop App with hot reload
+cd desktop && bun install && cargo tauri dev
 ```
 
 ## Quick Start
@@ -114,6 +142,20 @@ shard mod add my-profile sodium
 # Launch
 shard launch my-profile
 ```
+
+## Philosophy
+
+Shard is built on five principles:
+
+1. **Single source of truth** — Profiles are declarative manifests. Instances are derived artifacts that can be regenerated anytime.
+
+2. **Deduplication first** — Content lives in a SHA-256 addressed store. Install the same mod in 10 profiles? It's stored once.
+
+3. **Stable and boring** — Plain JSON on disk. Predictable directory layout. No hidden state or magic sync.
+
+4. **Replaceable parts** — Authentication, Minecraft data, and profiles are isolated modules. Swap or extend without breaking everything.
+
+5. **CLI-first** — Every feature works from the command line. Script it, automate it, pipe it.
 
 ## Commands
 
@@ -159,18 +201,6 @@ shard launch <profile>                        # Launch game
 shard launch <profile> --account <username>   # Launch with specific account
 shard launch <profile> --prepare-only         # Prepare without launching
 ```
-
-## Architecture
-
-Shard treats your game setup like code: **declarative**, **reproducible**, and **efficient**.
-
-| Principle | Implementation |
-|-----------|----------------|
-| **Single source of truth** | Profiles are JSON manifests. Instances are derived artifacts, regenerated on demand. |
-| **Deduplication** | SHA-256 content-addressed store. One file, infinite profiles. |
-| **No magic** | Plain JSON on disk. Predictable layout. Fully inspectable state. |
-| **Modular** | Auth, Minecraft data, and profiles are isolated. Swap or extend without breaking everything. |
-| **CLI-first** | Every feature works from the command line. Script it, automate it, pipe it. |
 
 ## Data Layout
 

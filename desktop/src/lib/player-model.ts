@@ -483,16 +483,13 @@ function createCapeGeometry(): THREE.BufferGeometry {
   const uvAttribute = geometry.attributes.uv;
   const uvArray = uvAttribute.array as Float32Array;
 
-  // Three.js BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z
-  // Cape is positioned behind player, so +Z shows the back texture (what you see from the front)
-  // and -Z shows the front texture (what you see from the back)
   const faces: (keyof UVCoords)[] = [
     "right",
     "left",
     "top",
     "bottom",
-    "back",  // +Z face shows back of cape (visible from front view)
-    "front", // -Z face shows front of cape (visible from back view)
+    "front",
+    "back",
   ];
 
   faces.forEach((face, faceIndex) => {

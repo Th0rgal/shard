@@ -5,17 +5,6 @@ description: Understanding Shard profile manifests
 
 # Profiles
 
-Shard is built around a few key concepts that make it different from other launchers. The flow is:
-
-```
-Profile (manifest) → Content Store (blobs) → Instance (game dir) → Launch
-```
-
-1. **Profiles** define what you want: Minecraft version, loader, mods
-2. The **[Content Store](/docs/concepts/content-store)** holds the actual files, deduplicated by hash
-3. **[Instances](/docs/concepts/instances)** are materialized game directories, ready to run
-4. **Launch** starts Minecraft with the right arguments
-
 A profile is a declarative manifest that describes a complete Minecraft setup.
 
 ## Profile Location
@@ -119,7 +108,7 @@ Export a profile for sharing (coming soon).
 shard profile list
 
 # Create a profile
-shard profile create "Name" --mc 1.21.4 --loader fabric
+shard profile create "Name" --version 1.21.4 --loader fabric
 
 # Delete a profile
 shard profile delete "Name"

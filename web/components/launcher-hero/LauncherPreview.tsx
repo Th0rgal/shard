@@ -24,7 +24,7 @@ const ROTATION_INTERVAL = 5000; // 5 seconds per slide
 /**
  * LauncherPreview component
  *
- * Displays a rotating carousel of Shard Launcher screenshots with macOS-style window chrome.
+ * Displays a rotating carousel of Shard Launcher screenshots.
  * Auto-advances every 5 seconds, with floating navigation buttons and dots.
  */
 export function LauncherPreview() {
@@ -109,11 +109,8 @@ export function LauncherPreview() {
     return (
       <div className="launcher-preview-container">
         <div className="launcher-preview">
-          <div className="launcher-window">
-            <WindowChrome title="Shard Launcher" />
-            <div className="launcher-body">
-              <FallbackPreview />
-            </div>
+          <div className="launcher-body">
+            <FallbackPreview />
           </div>
         </div>
         <style jsx>{styles}</style>
@@ -127,14 +124,10 @@ export function LauncherPreview() {
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      {/* Outer wrapper with shadow */}
+      {/* Outer wrapper simulates macOS desktop wallpaper */}
       <div className="launcher-preview">
-        {/* Window frame with chrome */}
+        {/* Inner wrapper is the actual window frame */}
         <div className="launcher-window">
-          {/* macOS-style titlebar */}
-          <WindowChrome title="Shard Launcher" />
-
-          {/* Screenshot body */}
           <div className="launcher-body">
             {SCREENSHOTS.map((screenshot, index) => (
               <Image
@@ -148,7 +141,7 @@ export function LauncherPreview() {
                 style={{
                   objectFit: "contain",
                   opacity: loadedImages.has(index) && currentIndex === index ? 1 : 0,
-                  transition: "opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1)",
+                  transition: "opacity 0.5s ease",
                 }}
                 onLoad={() => handleImageLoad(index)}
                 onError={() => handleImageError(index)}
@@ -200,94 +193,6 @@ export function LauncherPreview() {
   );
 }
 
-/**
- * macOS-style window chrome component
- */
-function WindowChrome({ title }: { title: string }) {
-  return (
-    <div className="window-chrome">
-      {/* Traffic light buttons */}
-      <div className="traffic-lights">
-        <div className="traffic-light traffic-light-close" />
-        <div className="traffic-light traffic-light-minimize" />
-        <div className="traffic-light traffic-light-maximize" />
-      </div>
-      {/* Window title */}
-      <span className="window-title">{title}</span>
-      {/* Spacer for centering */}
-      <div className="traffic-lights-spacer" />
-
-      <style jsx>{`
-        .window-chrome {
-          display: flex;
-          align-items: center;
-          height: 36px;
-          padding: 0 12px;
-          background: linear-gradient(180deg, rgb(30 29 27) 0%, rgb(24 23 22) 100%);
-          border-bottom: 1px solid rgba(255, 248, 240, 0.06);
-          user-select: none;
-        }
-
-        .traffic-lights {
-          display: flex;
-          gap: 8px;
-          flex-shrink: 0;
-        }
-
-        .traffic-lights-spacer {
-          width: 52px;
-          flex-shrink: 0;
-        }
-
-        .traffic-light {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          position: relative;
-        }
-
-        .traffic-light::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          border-radius: 50%;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
-        }
-
-        .traffic-light-close {
-          background: linear-gradient(180deg, #ff6058 0%, #e04942 100%);
-          box-shadow:
-            0 0 0 0.5px rgba(0, 0, 0, 0.15),
-            0 1px 2px rgba(0, 0, 0, 0.2);
-        }
-
-        .traffic-light-minimize {
-          background: linear-gradient(180deg, #ffbe2e 0%, #d9a11b 100%);
-          box-shadow:
-            0 0 0 0.5px rgba(0, 0, 0, 0.15),
-            0 1px 2px rgba(0, 0, 0, 0.2);
-        }
-
-        .traffic-light-maximize {
-          background: linear-gradient(180deg, #2bc840 0%, #1fa131 100%);
-          box-shadow:
-            0 0 0 0.5px rgba(0, 0, 0, 0.15),
-            0 1px 2px rgba(0, 0, 0, 0.2);
-        }
-
-        .window-title {
-          flex: 1;
-          text-align: center;
-          font-size: 13px;
-          font-weight: 500;
-          color: rgba(245, 240, 235, 0.6);
-          letter-spacing: -0.01em;
-        }
-      `}</style>
-    </div>
-  );
-}
-
 const styles = `
   .launcher-preview-container {
     width: 100%;
@@ -295,15 +200,10 @@ const styles = `
     margin: 0 auto;
   }
 
-  /* Window wrapper with premium shadow */
+  /* Simple container - screenshot includes actual wallpaper */
   .launcher-preview {
     border-radius: 12px;
     overflow: hidden;
-    box-shadow:
-      0 4px 8px rgba(0, 0, 0, 0.08),
-      0 8px 24px rgba(0, 0, 0, 0.14),
-      0 24px 48px rgba(0, 0, 0, 0.18),
-      0 0 0 1px rgba(255, 248, 240, 0.06);
   }
 
   .launcher-window {
@@ -311,13 +211,12 @@ const styles = `
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    background: rgb(18 17 16);
   }
 
   .launcher-body {
     position: relative;
-    /* Screenshot dimensions: actual captured size at 1x = 993x656 (1986x1312 at 2x retina) */
-    aspect-ratio: 993 / 656;
+    /* Actual screenshot dimensions: 1728x1328 (864x664 at 2x) */
+    aspect-ratio: 1728 / 1328;
     background: rgb(18 17 16);
   }
 
@@ -340,7 +239,7 @@ const styles = `
     justify-content: center;
     opacity: 0;
     pointer-events: none;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.2s ease-out;
   }
 
   .nav-button.visible {
@@ -353,7 +252,6 @@ const styles = `
     color: rgba(255, 248, 240, 1);
     transform: translateY(-50%) scale(1.1);
     border-color: rgba(232, 168, 85, 0.3);
-    box-shadow: 0 0 20px rgba(232, 168, 85, 0.15);
   }
 
   .nav-button:active {
@@ -365,7 +263,7 @@ const styles = `
   .nav-button svg {
     width: 20px;
     height: 20px;
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.2s ease;
   }
 
   .nav-button:hover svg {
@@ -396,7 +294,6 @@ const styles = `
     backdrop-filter: blur(12px);
     border-radius: 20px;
     border: 1px solid rgba(255, 248, 240, 0.06);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
 
   .indicator-dot {
@@ -407,12 +304,11 @@ const styles = `
     background: rgba(255, 248, 240, 0.3);
     cursor: pointer;
     padding: 0;
-    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.3s ease-out;
   }
 
   .indicator-dot:hover {
     background: rgba(255, 248, 240, 0.5);
-    transform: scale(1.2);
   }
 
   .indicator-dot.active {
@@ -424,7 +320,7 @@ const styles = `
 
   @media (max-width: 640px) {
     .launcher-body {
-      aspect-ratio: 993 / 656;
+      aspect-ratio: 1728 / 1328;
     }
 
     .nav-button {
@@ -537,7 +433,8 @@ function FallbackPreview() {
           background: rgba(255, 248, 240, 0.06);
           padding: 0.125rem 0.375rem;
           border-radius: 4px;
-          font-family: var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace);
+          font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+            monospace;
           font-size: 0.8125rem;
         }
       `}</style>

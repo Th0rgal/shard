@@ -4,7 +4,7 @@ use shard::auth::{DeviceCode, request_device_code};
 use shard::config::{Config, load_config, save_config};
 use shard::content_store::{ContentStore, ContentType, Platform, SearchOptions, ContentItem, ContentVersion};
 use shard::java::{JavaInstallation, JavaValidation, detect_installations, validate_java_path, get_required_java_version, is_java_compatible};
-use shard::library::{Library, LibraryItem, LibraryFilter, LibraryItemInput, LibraryContentType, LibraryStats, Tag, ImportResult, UnusedItemsSummary, PurgeResult};
+use shard::library::{Library, LibraryItem, LibraryFilter, LibraryItemInput, LibraryContentType, LibraryStats, Tag, ImportResult};
 use shard::logs::{LogEntry, LogFile, LogWatcher, list_log_files, list_crash_reports, read_log_file, read_log_tail};
 use shard::minecraft::{LaunchPlan, prepare};
 use shard::ops::{finish_device_code_flow, parse_loader, resolve_input, resolve_launch_account};
@@ -401,25 +401,14 @@ pub fn prepare_profile_cmd(profile_id: String, account_id: Option<String>) -> Re
 }
 
 #[tauri::command]
-pub fn launch_profile_cmd(app: AppHandle, profile_id: String, account_id: Option<String>) -> Result<(), String> {
+pub async fn launch_profile_cmd(app: AppHandle, profile_id: String, account_id: Option<String>) -> Result<(), String> {
     let app_handle = app.clone();
-
-    // Emit initial status immediately before spawning thread
-    let _ = app.emit("launch-status", LaunchEvent {
-        stage: "queued".to_string(),
-        message: Some("Starting launch...".to_string()),
-    });
-
-    // Use spawn_blocking for blocking I/O operations (HTTP requests, file I/O)
     tauri::async_runtime::spawn_blocking(move || {
-        match run_launch(app_handle.clone(), profile_id.clone(), account_id) {
-            Ok(()) => {}
-            Err(err) => {
-                let _ = app_handle.emit("launch-status", LaunchEvent {
-                    stage: "error".to_string(),
-                    message: Some(err),
-                });
-            }
+        if let Err(err) = run_launch(app_handle.clone(), profile_id, account_id) {
+            let _ = app_handle.emit("launch-status", LaunchEvent {
+                stage: "error".to_string(),
+                message: Some(err),
+            });
         }
     });
     Ok(())
@@ -434,38 +423,30 @@ pub fn instance_path_cmd(profile_id: String) -> Result<String, String> {
 fn run_launch(app: AppHandle, profile_id: String, account_id: Option<String>) -> Result<(), String> {
     let _ = app.emit("launch-status", LaunchEvent {
         stage: "preparing".to_string(),
-        message: Some("Downloading game files...".to_string()),
+        message: None,
     });
-
     let paths = load_paths()?;
-    let profile = load_profile(&paths, &profile_id).map_err(|e| format!("Failed to load profile: {}", e))?;
-    let account = resolve_launch_account(&paths, account_id).map_err(|e| format!("Failed to resolve account: {}", e))?;
-    let plan = prepare(&paths, &profile, &account).map_err(|e| format!("Failed to prepare launch: {}", e))?;
+    let profile = load_profile(&paths, &profile_id).map_err(|e| e.to_string())?;
+    let account = resolve_launch_account(&paths, account_id).map_err(|e| e.to_string())?;
+    let plan = prepare(&paths, &profile, &account).map_err(|e| e.to_string())?;
 
     let _ = app.emit("launch-status", LaunchEvent {
         stage: "launching".to_string(),
-        message: Some("Starting Minecraft...".to_string()),
+        message: None,
     });
 
-    let mut child = Command::new(&plan.java_exec)
+    let status = Command::new(&plan.java_exec)
         .args(&plan.jvm_args)
         .arg("-cp")
         .arg(&plan.classpath)
         .arg(&plan.main_class)
         .args(&plan.game_args)
         .current_dir(&plan.instance_dir)
-        .spawn()
-        .map_err(|e| format!("Failed to start Java: {}", e))?;
-
-    let _ = app.emit("launch-status", LaunchEvent {
-        stage: "running".to_string(),
-        message: Some("Minecraft is running".to_string()),
-    });
-
-    let status = child.wait().map_err(|e| format!("Failed to wait for process: {}", e))?;
+        .status()
+        .map_err(|e| e.to_string())?;
 
     if !status.success() {
-        return Err(format!("Minecraft exited with status {}", status));
+        return Err(format!("minecraft exited with status {status}"));
     }
 
     let _ = app.emit("launch-status", LaunchEvent {
@@ -1006,13 +987,6 @@ pub fn read_crash_report_cmd(profile_id: String, file: Option<String>) -> Result
     std::fs::read_to_string(&crash_path).map_err(|e| e.to_string())
 }
 
-fn sanitize_event_segment(value: &str) -> String {
-    value
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '/' | ':' | '_') { c } else { '_' })
-        .collect()
-}
-
 /// Start watching a log file and emit events for new entries
 #[tauri::command]
 pub async fn start_log_watch(
@@ -1024,24 +998,18 @@ pub async fn start_log_watch(
 
     // Spawn background task to watch the log
     std::thread::spawn(move || {
-        let mut watcher = LogWatcher::from_start(log_path.clone());
-        let event_name = format!("log-entries-{}", sanitize_event_segment(&profile_id));
+        let mut watcher = LogWatcher::from_start(log_path);
 
         loop {
             // Read new entries
             match watcher.read_new() {
                 Ok(entries) if !entries.is_empty() => {
                     // Emit event with new log entries
-                    if app.emit(&event_name, &entries).is_err() {
+                    if app.emit(&format!("log-entries-{}", profile_id), &entries).is_err() {
                         break; // Window closed
                     }
                 }
-                Ok(_) => {
-                    // No new entries
-                }
-                Err(_) => {
-                    // Error reading log
-                }
+                _ => {}
             }
 
             std::thread::sleep(std::time::Duration::from_millis(250));
@@ -1130,179 +1098,6 @@ pub fn fetch_fabric_versions_cmd() -> Result<Vec<String>, String> {
 
     let versions: Vec<String> = entries.into_iter().map(|e| e.version).collect();
     Ok(versions)
-}
-
-/// Quilt loader version entry from the Quilt Meta API
-#[derive(Clone, Deserialize)]
-struct QuiltLoaderEntry {
-    version: String,
-}
-
-#[tauri::command]
-pub fn fetch_quilt_versions_cmd() -> Result<Vec<String>, String> {
-    let client = reqwest::blocking::Client::new();
-    let resp = client
-        .get("https://meta.quiltmc.org/v3/versions/loader")
-        .send()
-        .map_err(|e| format!("Failed to fetch Quilt versions: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("HTTP error: {}", resp.status()));
-    }
-
-    let entries: Vec<QuiltLoaderEntry> = resp
-        .json()
-        .map_err(|e| format!("Failed to parse Quilt versions: {}", e))?;
-
-    let versions: Vec<String> = entries.into_iter().map(|e| e.version).collect();
-    Ok(versions)
-}
-
-/// NeoForge version entry from the NeoForge API
-#[derive(Clone, Deserialize)]
-struct NeoForgeVersionsResponse {
-    versions: Vec<String>,
-}
-
-/// Extract the minor.patch portion from a Minecraft version string.
-/// NeoForge versions are based on the MC version without the leading "1." prefix.
-/// For example: "1.20.1" -> "20.1", "1.21" -> "21", "2.0" -> "2.0" (future-proof)
-fn extract_neoforge_version_filter(mc_version: &str) -> String {
-    // Split by '.' and skip the first component (usually "1")
-    let parts: Vec<&str> = mc_version.split('.').collect();
-    if parts.len() >= 2 {
-        // For versions like "1.20.1" -> "20.1", "1.21" -> "21"
-        // For potential future "2.0" -> "0" (just the second part onwards)
-        parts[1..].join(".")
-    } else {
-        // Fallback: return as-is if format is unexpected
-        mc_version.to_string()
-    }
-}
-
-#[tauri::command]
-pub fn fetch_neoforge_versions_cmd(mc_version: Option<String>) -> Result<Vec<String>, String> {
-    let client = reqwest::blocking::Client::new();
-
-    // NeoForge API returns versions for a specific MC version
-    // NeoForge versions omit the leading "1." from MC versions (e.g., 1.20.1 -> 20.1)
-    let url = if let Some(ref mc) = mc_version {
-        let filter = extract_neoforge_version_filter(mc);
-        format!("https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge?filter={}.", filter)
-    } else {
-        "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge".to_string()
-    };
-
-    let resp = client
-        .get(&url)
-        .send()
-        .map_err(|e| format!("Failed to fetch NeoForge versions: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("HTTP error: {}", resp.status()));
-    }
-
-    let data: NeoForgeVersionsResponse = resp
-        .json()
-        .map_err(|e| format!("Failed to parse NeoForge versions: {}", e))?;
-
-    // Sort versions in descending order (newest first) using semantic versioning
-    let mut versions = data.versions;
-    versions.sort_by(|a, b| compare_versions_desc(b, a));
-    Ok(versions)
-}
-
-/// Forge promotions response
-#[derive(Clone, Deserialize)]
-struct ForgePromotionsResponse {
-    promos: std::collections::HashMap<String, String>,
-}
-
-#[tauri::command]
-pub fn fetch_forge_versions_cmd(mc_version: Option<String>) -> Result<Vec<String>, String> {
-    let client = reqwest::blocking::Client::new();
-
-    // Forge uses a promotions endpoint that lists recommended/latest versions
-    let resp = client
-        .get("https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json")
-        .send()
-        .map_err(|e| format!("Failed to fetch Forge promotions: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("HTTP error: {}", resp.status()));
-    }
-
-    let promos: ForgePromotionsResponse = resp
-        .json()
-        .map_err(|e| format!("Failed to parse Forge promotions: {}", e))?;
-
-    // Filter versions based on MC version if provided
-    let mut versions: Vec<String> = if let Some(mc) = mc_version {
-        // Look for versions matching this MC version exactly
-        // Key format: "1.20.1-recommended" or "1.20.1-latest"
-        let prefix = format!("{}-", mc);
-        promos.promos.iter()
-            .filter(|(key, _)| key.starts_with(&prefix))
-            .map(|(_, version)| {
-                // Value is the forge version number
-                format!("{}-{}", mc, version)
-            })
-            .collect()
-    } else {
-        // Return all unique MC-version combinations
-        let mut seen = std::collections::HashSet::new();
-        promos.promos.iter()
-            .filter_map(|(key, version)| {
-                // Extract MC version from key (e.g., "1.20.1" from "1.20.1-recommended")
-                let mc = key.split('-').next()?;
-                let full_version = format!("{}-{}", mc, version);
-                if seen.insert(full_version.clone()) {
-                    Some(full_version)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    };
-
-    // Sort versions in descending order (newest first) using semantic versioning
-    versions.sort_by(|a, b| compare_versions_desc(b, a));
-    Ok(versions)
-}
-
-/// Compare two version strings semantically (for descending sort)
-/// Returns Ordering based on semantic version comparison
-fn compare_versions_desc(a: &str, b: &str) -> std::cmp::Ordering {
-    let parse_parts = |s: &str| -> Vec<u64> {
-        s.split(|c: char| c == '.' || c == '-')
-            .filter_map(|p| p.parse::<u64>().ok())
-            .collect()
-    };
-
-    let a_parts = parse_parts(a);
-    let b_parts = parse_parts(b);
-
-    for (a_part, b_part) in a_parts.iter().zip(b_parts.iter()) {
-        match a_part.cmp(b_part) {
-            std::cmp::Ordering::Equal => continue,
-            other => return other,
-        }
-    }
-
-    // If all compared parts are equal, longer version is greater
-    a_parts.len().cmp(&b_parts.len())
-}
-
-/// Fetch loader versions for any supported loader type
-#[tauri::command]
-pub fn fetch_loader_versions_cmd(loader_type: String, mc_version: Option<String>) -> Result<Vec<String>, String> {
-    match loader_type.to_lowercase().as_str() {
-        "fabric" => fetch_fabric_versions_cmd(),
-        "quilt" => fetch_quilt_versions_cmd(),
-        "neoforge" => fetch_neoforge_versions_cmd(mc_version),
-        "forge" => fetch_forge_versions_cmd(mc_version),
-        other => Err(format!("Unsupported loader type: {}", other)),
-    }
 }
 
 // ============================================================================
@@ -1475,78 +1270,7 @@ pub fn library_get_stats_cmd() -> Result<LibraryStats, String> {
 pub fn library_sync_cmd() -> Result<ImportResult, String> {
     let paths = load_paths()?;
     let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
-    let mut result = library.sync_with_store(&paths).map_err(|e| e.to_string())?;
-
-    // After syncing, enrich library items with metadata from profiles
-    if let Err(e) = enrich_library_from_profiles(&paths, &library) {
-        result.errors.push(format!("Warning: Failed to enrich library metadata: {}", e));
-    }
-
-    Ok(result)
-}
-
-/// Enrich library items with metadata from all profiles
-fn enrich_library_from_profiles(paths: &Paths, library: &Library) -> Result<usize, String> {
-    let profiles = list_profiles(paths).map_err(|e| e.to_string())?;
-    let mut enriched = 0;
-
-    for profile_id in profiles {
-        if let Ok(profile) = load_profile(paths, &profile_id) {
-            // Enrich from mods
-            for content in &profile.mods {
-                if library.enrich_item_from_content_ref(
-                    &content.hash,
-                    &content.name,
-                    content.file_name.as_deref(),
-                    content.source.as_deref(),
-                    content.platform.as_deref(),
-                    content.project_id.as_deref(),
-                    content.version.as_deref(),
-                ).is_ok() {
-                    enriched += 1;
-                }
-            }
-
-            // Enrich from resourcepacks
-            for content in &profile.resourcepacks {
-                if library.enrich_item_from_content_ref(
-                    &content.hash,
-                    &content.name,
-                    content.file_name.as_deref(),
-                    content.source.as_deref(),
-                    content.platform.as_deref(),
-                    content.project_id.as_deref(),
-                    content.version.as_deref(),
-                ).is_ok() {
-                    enriched += 1;
-                }
-            }
-
-            // Enrich from shaderpacks
-            for content in &profile.shaderpacks {
-                if library.enrich_item_from_content_ref(
-                    &content.hash,
-                    &content.name,
-                    content.file_name.as_deref(),
-                    content.source.as_deref(),
-                    content.platform.as_deref(),
-                    content.project_id.as_deref(),
-                    content.version.as_deref(),
-                ).is_ok() {
-                    enriched += 1;
-                }
-            }
-        }
-    }
-
-    Ok(enriched)
-}
-
-#[tauri::command]
-pub fn library_enrich_from_profiles_cmd() -> Result<usize, String> {
-    let paths = load_paths()?;
-    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
-    enrich_library_from_profiles(&paths, &library)
+    library.sync_with_store(&paths).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1630,28 +1354,6 @@ pub fn get_data_path_cmd() -> Result<String, String> {
 pub fn get_storage_stats_cmd() -> Result<StorageStats, String> {
     let paths = load_paths()?;
     get_storage_stats(&paths).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_unused_items_cmd() -> Result<UnusedItemsSummary, String> {
-    let paths = load_paths()?;
-    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
-    library.get_unused_items().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn purge_unused_items_cmd(content_types: Vec<String>) -> Result<PurgeResult, String> {
-    let paths = load_paths()?;
-    let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
-
-    // Convert string content types to LibraryContentType
-    let types: Vec<LibraryContentType> = content_types
-        .iter()
-        .filter_map(|s| LibraryContentType::from_str(s))
-        .collect();
-
-    // Always delete files from store when purging
-    library.purge_unused_items(&paths, &types, true).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

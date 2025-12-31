@@ -1,0 +1,54 @@
+---
+title: Core Concepts
+description: Understanding Shard's architecture
+---
+
+# Core Concepts
+
+Shard is built around a few key concepts that make it different from other launchers.
+
+## The Flow
+
+```
+Profile (manifest) → Content Store (blobs) → Instance (game dir) → Launch
+```
+
+1. **Profiles** define what you want: Minecraft version, loader, mods
+2. The **Content Store** holds the actual files, deduplicated by hash
+3. **Instances** are materialized game directories, ready to run
+4. **Launch** starts Minecraft with the right arguments
+
+## Declarative vs Imperative
+
+Traditional launchers are imperative: you click buttons to install mods, and the launcher modifies state directly. If something breaks, it's hard to know what changed.
+
+Shard is declarative: your profile is a manifest that describes the desired state. The launcher materializes instances from this manifest. If something breaks, you can inspect the manifest or reset to a known state.
+
+## Content-Addressed Storage
+
+Every file in the content store is named by its SHA-256 hash:
+
+```
+~/.shard/store/mods/sha256/a3f2e1d4...
+```
+
+This means:
+- **No duplicates**: Same file = same hash = stored once
+- **Integrity**: If the hash matches, the content is correct
+- **Easy cleanup**: Remove unreferenced blobs safely
+
+## Separation of Concerns
+
+Shard separates:
+- **Profiles**: What you want (the manifest)
+- **Content**: What exists (the blobs)
+- **Instances**: What runs (the game dir)
+- **Minecraft data**: Versions, libraries, assets (shared)
+
+This separation makes Shard predictable and scriptable.
+
+## Learn More
+
+- [Profiles](/docs/concepts/profiles) - Deep dive into profile manifests
+- [Content Store](/docs/concepts/content-store) - How deduplication works
+- [Instances](/docs/concepts/instances) - How game directories are created

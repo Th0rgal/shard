@@ -98,6 +98,7 @@ export type ModalType =
   | "diff"
   | "json"
   | "add-content"
+  | "prepare"
   | "device-code"
   | "account-details"
   | "skin-upload"
@@ -337,31 +338,6 @@ export type StorageStats = {
   unique_items: number;
   total_references: number;
   deduplication_savings: number;
-};
-
-// Purge/cleanup types
-export type UnusedItem = {
-  id: number;
-  hash: string;
-  content_type: LibraryContentType;
-  name: string;
-  file_size?: number | null;
-};
-
-export type UnusedItemsSummary = {
-  mods: UnusedItem[];
-  resourcepacks: UnusedItem[];
-  shaderpacks: UnusedItem[];
-  skins: UnusedItem[];
-  total_count: number;
-  total_bytes: number;
-};
-
-export type PurgeResult = {
-  deleted_count: number;
-  freed_bytes: number;
-  items: UnusedItem[];
-  errors: string[];
 };
 
 // Update checking types

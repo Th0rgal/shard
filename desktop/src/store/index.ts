@@ -10,12 +10,12 @@ import type {
   ConfirmState,
   Toast,
   LaunchEvent,
+  LaunchPlan,
   DeviceCode,
   DiffResult,
   ManifestVersion,
   ProfileFolder,
   ProfileOrganization,
-  AccountInfo,
 } from "../types";
 
 const PROFILE_ORG_KEY = "shard:profile-organization";
@@ -27,7 +27,6 @@ interface AppState {
   selectedProfileId: string | null;
   accounts: Accounts | null;
   selectedAccountId: string | null;
-  activeAccountSkinUrl: string | null;
   config: Config | null;
 
   // UI state
@@ -46,6 +45,7 @@ interface AppState {
   contextMenuTarget: { type: "profile" | "folder"; id: string; x: number; y: number } | null;
 
   // Modal-specific state
+  plan: LaunchPlan | null;
   deviceCode: DeviceCode | null;
   devicePending: boolean;
   diffResult: DiffResult | null;
@@ -62,7 +62,6 @@ interface AppState {
   setSelectedProfileId: (id: string | null) => void;
   setAccounts: (accounts: Accounts | null) => void;
   setSelectedAccountId: (id: string | null) => void;
-  setActiveAccountSkinUrl: (url: string | null) => void;
   setConfig: (config: Config | null) => void;
   setProfileFilter: (filter: string) => void;
   setActiveTab: (tab: ContentTab) => void;
@@ -73,6 +72,7 @@ interface AppState {
   setIsWorking: (working: boolean) => void;
   setConfirmState: (state: ConfirmState | null) => void;
   setDebugDrag: (debug: boolean) => void;
+  setPlan: (plan: LaunchPlan | null) => void;
   setDeviceCode: (code: DeviceCode | null) => void;
   setDevicePending: (pending: boolean) => void;
   setDiffResult: (result: DiffResult | null) => void;
@@ -90,7 +90,6 @@ interface AppState {
   moveProfileToFolder: (profileId: string, folderId: string | null) => void;
   reorderProfileInFolder: (profileId: string, folderId: string | null, targetIndex: number) => void;
   setFavoriteProfile: (profileId: string | null) => void;
-  renameProfileInOrganization: (oldId: string, newId: string) => void;
   loadProfileOrganization: () => void;
   syncProfileOrganization: () => void;
 
@@ -99,9 +98,6 @@ interface AppState {
   loadProfile: (id: string) => Promise<void>;
   loadAccounts: () => Promise<void>;
   loadConfig: () => Promise<void>;
-  precacheMcVersions: () => Promise<void>;
-  precacheFabricVersions: () => Promise<void>;
-  prefetchActiveAccountSkin: () => Promise<void>;
   notify: (title: string, detail?: string) => void;
   runAction: (action: () => Promise<void>) => Promise<void>;
 
@@ -116,7 +112,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedProfileId: null,
   accounts: null,
   selectedAccountId: null,
-  activeAccountSkinUrl: null,
   config: null,
   profileFilter: "",
   activeTab: "mods",
@@ -129,6 +124,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   debugDrag: false,
   profileOrg: { folders: [], ungrouped: [] },
   contextMenuTarget: null,
+  plan: null,
   deviceCode: null,
   devicePending: false,
   diffResult: null,
@@ -143,7 +139,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSelectedProfileId: (selectedProfileId) => set({ selectedProfileId }),
   setAccounts: (accounts) => set({ accounts }),
   setSelectedAccountId: (selectedAccountId) => set({ selectedAccountId }),
-  setActiveAccountSkinUrl: (activeAccountSkinUrl) => set({ activeAccountSkinUrl }),
   setConfig: (config) => set({ config }),
   setProfileFilter: (profileFilter) => set({ profileFilter }),
   setActiveTab: (activeTab) => set({ activeTab }),
@@ -154,6 +149,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setIsWorking: (isWorking) => set({ isWorking }),
   setConfirmState: (confirmState) => set({ confirmState }),
   setDebugDrag: (debugDrag) => set({ debugDrag }),
+  setPlan: (plan) => set({ plan }),
   setDeviceCode: (deviceCode) => set({ deviceCode }),
   setDevicePending: (devicePending) => set({ devicePending }),
   setDiffResult: (diffResult) => set({ diffResult }),
@@ -265,27 +261,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem(PROFILE_ORG_KEY, JSON.stringify(newOrg));
   },
 
-  renameProfileInOrganization: (oldId: string, newId: string) => {
-    const { profileOrg } = get();
-    // Update profile ID in folders
-    const newFolders = profileOrg.folders.map((f) => ({
-      ...f,
-      profiles: f.profiles.map((p) => (p === oldId ? newId : p)),
-    }));
-    // Update profile ID in ungrouped
-    const newUngrouped = profileOrg.ungrouped.map((p) => (p === oldId ? newId : p));
-    // Update favorite if it was the renamed profile
-    const newFavorite = profileOrg.favoriteProfile === oldId ? newId : profileOrg.favoriteProfile;
-
-    const newOrg = {
-      folders: newFolders,
-      ungrouped: newUngrouped,
-      favoriteProfile: newFavorite,
-    };
-    set({ profileOrg: newOrg });
-    localStorage.setItem(PROFILE_ORG_KEY, JSON.stringify(newOrg));
-  },
-
   loadProfileOrganization: () => {
     try {
       const stored = localStorage.getItem(PROFILE_ORG_KEY);
@@ -342,43 +317,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // Precache Minecraft versions (call on app init for instant dropdowns)
-  precacheMcVersions: async () => {
-    const { mcVersions } = get();
-    if (mcVersions.length > 0) return; // Already cached
-    set({ mcVersionLoading: true });
-    try {
-      const response = await invoke<{ versions: ManifestVersion[] }>("fetch_minecraft_versions_cmd");
-      set({ mcVersions: response.versions });
-    } catch {
-      // Silently fail - will retry when dropdown opens
-    } finally {
-      set({ mcVersionLoading: false });
-    }
-  },
-
-  // Precache Fabric versions (call on app init for instant dropdowns)
-  precacheFabricVersions: async () => {
-    const { loaderVersions } = get();
-    if (loaderVersions.length > 0) return; // Already cached
-    set({ loaderLoading: true });
-    try {
-      const versions = await invoke<string[]>("fetch_fabric_versions_cmd");
-      set({ loaderVersions: versions });
-    } catch {
-      // Silently fail - will retry when dropdown opens
-    } finally {
-      set({ loaderLoading: false });
-    }
-  },
-
   loadProfile: async (id: string) => {
     try {
       const data = await invoke<Profile>("load_profile_cmd", { id });
       set({ profile: data });
     } catch (err) {
-      // Clear profile and selection when load fails (e.g., profile was deleted)
-      set({ profile: null, selectedProfileId: null });
       get().notify("Failed to load profile", String(err));
     }
   },
@@ -402,21 +345,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ config: data });
     } catch (err) {
       get().notify("Failed to load config", String(err));
-    }
-  },
-
-  // Prefetch the active account's skin URL from Minecraft API
-  // This ensures the sidebar shows the real skin instead of cached mc-heads.net avatar
-  prefetchActiveAccountSkin: async () => {
-    const { accounts, selectedAccountId } = get();
-    if (!accounts) return;
-    const accountId = selectedAccountId ?? accounts.active ?? accounts.accounts[0]?.uuid;
-    if (!accountId) return;
-    try {
-      const info = await invoke<AccountInfo>("get_account_info_cmd", { id: accountId });
-      set({ activeAccountSkinUrl: info.skin_url });
-    } catch {
-      // Silently fail - sidebar will fall back to mc-heads.net
     }
   },
 

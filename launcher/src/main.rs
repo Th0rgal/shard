@@ -1870,30 +1870,6 @@ fn handle_library_command(paths: &Paths, command: LibraryCommand) -> Result<()> 
                     println!("  {err}");
                 }
             }
-
-            // Enrich library items with metadata from profiles
-            let profiles = list_profiles(paths)?;
-            let mut enriched = 0;
-            for profile_id in profiles {
-                if let Ok(profile) = load_profile(paths, &profile_id) {
-                    for content in profile.mods.iter().chain(profile.resourcepacks.iter()).chain(profile.shaderpacks.iter()) {
-                        if library.enrich_item_from_content_ref(
-                            &content.hash,
-                            &content.name,
-                            content.file_name.as_deref(),
-                            content.source.as_deref(),
-                            content.platform.as_deref(),
-                            content.project_id.as_deref(),
-                            content.version.as_deref(),
-                        ).is_ok() {
-                            enriched += 1;
-                        }
-                    }
-                }
-            }
-            if enriched > 0 {
-                println!("enriched {} items with profile metadata", enriched);
-            }
         }
         LibraryCommand::Tag { command } => handle_tag_command(&library, command)?,
     }

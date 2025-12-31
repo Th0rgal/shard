@@ -2,21 +2,15 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capabilities for the main window",
-  "local": true,
-  "remote": {
-    "urls": [
-      "http://localhost:1420/*",
-      "http://127.0.0.1:1420/*"
-    ]
-  },
   "windows": ["main"],
   "permissions": [
     "core:window:allow-start-dragging",
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
     "core:window:allow-is-maximized",
-    "core:event:default",
     "opener:default",
     "dialog:default"
   ]
 }
+
+

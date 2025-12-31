@@ -1,7 +1,6 @@
 /*
  * Shard Documentation Theme
  * Overrides nextra-theme-docs to match Shard's warm design system
- * Enhanced with premium styling matching the desktop app
  */
 
 /* ============================================
@@ -22,11 +21,6 @@ html[data-theme="dark"] {
   --nextra-bg: 12, 11, 10 !important; /* #0c0b0a */
   color-scheme: dark !important;
   background-color: #0c0b0a !important;
-
-  /* Premium easing curves */
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
-  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ============================================
@@ -54,21 +48,6 @@ nav.nextra-nav-container {
   border-right: 1px solid rgba(255, 248, 240, 0.06) !important;
 }
 
-/* Sidebar ambient tint (matching desktop) */
-.nextra-sidebar-container::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(232, 168, 85, 0.02) 0%,
-    transparent 30%,
-    transparent 70%,
-    rgba(244, 178, 127, 0.015) 100%
-  );
-  pointer-events: none;
-}
-
 main.nextra-content {
   background-color: rgb(12, 11, 10) !important;
 }
@@ -78,7 +57,7 @@ main.nextra-content {
 }
 
 /* ============================================
-   TYPOGRAPHY - Enhanced with Geist
+   TYPOGRAPHY
    ============================================ */
 
 .nextra-content h1,
@@ -87,7 +66,6 @@ main.nextra-content {
 .nextra-content h4 {
   color: rgba(245, 240, 235, 0.95) !important;
   font-weight: 600;
-  letter-spacing: -0.01em;
 }
 
 .nextra-content h1 {
@@ -124,7 +102,7 @@ article h2 {
 .nextra-content a {
   color: rgb(232, 168, 85) !important; /* Warm amber */
   text-decoration: none;
-  transition: color 150ms var(--ease-out-quart);
+  transition: color 150ms ease;
 }
 
 .nextra-content a:hover {
@@ -137,7 +115,7 @@ article h2 {
 }
 
 /* ============================================
-   NAVIGATION & SIDEBAR - Premium styling
+   NAVIGATION & SIDEBAR
    ============================================ */
 
 .nextra-sidebar-container a,
@@ -145,43 +123,29 @@ aside a,
 [class*="sidebar"] a,
 nav a:not(.nextra-nav-container a) {
   color: rgba(245, 240, 235, 0.6) !important;
-  border-radius: 0.5rem !important;
-  transition: all 150ms var(--ease-out-quart) !important;
-  padding: 0.5rem 0.75rem !important;
-  border: none !important;
-  border-left: none !important;
+  border-radius: 0.25rem;
+  transition: all 150ms ease;
 }
 
 .nextra-sidebar-container a:hover,
 aside a:hover,
 [class*="sidebar"] a:hover {
   color: rgba(245, 240, 235, 0.9) !important;
-  background-color: rgba(255, 248, 240, 0.04) !important;
+  background-color: rgba(255, 248, 240, 0.03) !important;
 }
 
-/* Simplified active state - just background color, no border */
 .nextra-sidebar-container a[data-active="true"],
 .nextra-sidebar-container a.active,
 aside a[data-active="true"],
 aside a.active,
 [class*="sidebar"] a[data-active="true"],
 [class*="sidebar"] a.active,
-li.active > a:only-child,
+li.active > a,
 a[aria-current="page"] {
-  color: rgb(232, 168, 85) !important;
-  background-color: rgba(232, 168, 85, 0.1) !important;
-  border: none !important;
-  border-left: none !important;
-  margin-left: 0 !important;
-  box-shadow: none !important;
-  border-radius: 0.5rem !important;
-}
-
-/* Prevent parent containers from inheriting active background */
-.nextra-sidebar-container li.active,
-.nextra-sidebar-container ul.active,
-.nextra-sidebar-container div.active {
-  background-color: transparent !important;
+  color: rgba(245, 240, 235, 0.95) !important;
+  background-color: rgba(232, 168, 85, 0.08) !important;
+  border-left: 2px solid rgb(232, 168, 85) !important;
+  margin-left: -2px;
 }
 
 .nextra-sidebar-container .nextra-menu-title,
@@ -215,49 +179,16 @@ aside ul > li:first-child:not(:has(a)):not(:has(button)) {
 }
 
 /* ============================================
-   TABLE OF CONTENTS - Enhanced styling
-   ============================================ */
-
-.nextra-toc a {
-  font-size: 0.8125rem !important;
-  color: rgba(245, 240, 235, 0.5) !important;
-  padding: 0.375rem 0.75rem !important;
-  border-radius: 0.375rem !important;
-  transition: all 150ms var(--ease-out-quart) !important;
-  display: block;
-}
-
-.nextra-toc a:hover {
-  color: rgba(245, 240, 235, 0.8) !important;
-  background: rgba(255, 248, 240, 0.04) !important;
-}
-
-.nextra-toc a[data-active="true"],
-.nextra-toc a.active {
-  color: rgb(232, 168, 85) !important;
-  background: rgba(232, 168, 85, 0.1) !important;
-}
-
-.nextra-toc-title {
-  color: rgba(245, 240, 235, 0.4) !important;
-  font-size: 0.6875rem !important;
-  font-weight: 600 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.08em !important;
-  margin-bottom: 0.5rem !important;
-}
-
-/* ============================================
-   CODE BLOCKS - Premium styling
+   CODE BLOCKS
    ============================================ */
 
 .nextra-content code:not(pre code) {
   background-color: rgba(255, 248, 240, 0.06) !important;
   color: rgb(244, 178, 127) !important;
-  padding: 0.125rem 0.5rem;
+  padding: 0.125rem 0.375rem;
   border-radius: 0.375rem;
   font-size: 0.875em;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 pre {
@@ -265,31 +196,10 @@ pre {
   border: 1px solid rgba(255, 248, 240, 0.06) !important;
   border-radius: 0.75rem !important;
   backdrop-filter: blur(8px);
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.08),
-    0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-/* Top edge highlight on code blocks */
-pre::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 5%,
-    rgba(255, 255, 255, 0.06) 50%,
-    transparent 95%
-  );
-  pointer-events: none;
-  border-radius: 0.75rem 0.75rem 0 0;
 }
 
 pre code {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace) !important;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
   font-size: 0.875rem;
   line-height: 1.6;
 }
@@ -299,26 +209,10 @@ pre code {
   border-bottom: 1px solid rgba(255, 248, 240, 0.06) !important;
   color: rgba(245, 240, 235, 0.5) !important;
   font-size: 0.75rem;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace);
-}
-
-/* Copy button */
-.nextra-code-block button[aria-label*="Copy"] {
-  background: rgba(255, 248, 240, 0.04) !important;
-  border: 1px solid rgba(255, 248, 240, 0.08) !important;
-  border-radius: 0.375rem !important;
-  color: rgba(245, 240, 235, 0.6) !important;
-  transition: all 150ms var(--ease-out-quart) !important;
-}
-
-.nextra-code-block button[aria-label*="Copy"]:hover {
-  background: rgba(255, 248, 240, 0.08) !important;
-  border-color: rgba(255, 248, 240, 0.12) !important;
-  color: rgba(245, 240, 235, 0.9) !important;
 }
 
 /* ============================================
-   CALLOUTS / ADMONITIONS - Premium styling
+   CALLOUTS / ADMONITIONS
    ============================================ */
 
 .nextra-callout {
@@ -326,25 +220,6 @@ pre code {
   border: 1px solid rgba(255, 248, 240, 0.06) !important;
   background-color: rgba(255, 248, 240, 0.02) !important;
   backdrop-filter: blur(8px);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Top edge highlight */
-.nextra-callout::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 5%,
-    rgba(255, 255, 255, 0.06) 50%,
-    transparent 95%
-  );
-  pointer-events: none;
 }
 
 .nextra-callout[data-type="info"] {
@@ -363,20 +238,17 @@ pre code {
 }
 
 /* ============================================
-   TABLES - Premium styling
+   TABLES
    ============================================ */
 
 .nextra-content table {
   border-collapse: collapse;
   width: 100%;
   margin: 1.5rem 0;
-  border-radius: 0.75rem;
-  overflow: hidden;
-  border: 1px solid rgba(255, 248, 240, 0.06);
 }
 
 .nextra-content th {
-  background-color: rgba(255, 248, 240, 0.04) !important;
+  background-color: rgba(255, 248, 240, 0.03) !important;
   color: rgba(245, 240, 235, 0.7) !important;
   font-weight: 500;
   font-size: 0.75rem;
@@ -397,10 +269,6 @@ pre code {
   background-color: rgba(255, 248, 240, 0.02);
 }
 
-.nextra-content tr:last-child td {
-  border-bottom: none !important;
-}
-
 /* ============================================
    LISTS
    ============================================ */
@@ -419,7 +287,7 @@ pre code {
 }
 
 /* ============================================
-   BLOCKQUOTES - Premium styling
+   BLOCKQUOTES
    ============================================ */
 
 .nextra-content blockquote {
@@ -427,23 +295,7 @@ pre code {
   background-color: rgba(232, 168, 85, 0.03) !important;
   padding: 1rem 1.5rem;
   margin: 1.5rem 0;
-  border-radius: 0 0.75rem 0.75rem 0;
-  position: relative;
-}
-
-.nextra-content blockquote::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 3px;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    rgba(232, 168, 85, 0.2) 0%,
-    transparent 100%
-  );
-  pointer-events: none;
+  border-radius: 0 0.5rem 0.5rem 0;
 }
 
 .nextra-content blockquote p {
@@ -452,7 +304,7 @@ pre code {
 }
 
 /* ============================================
-   SEARCH - Premium styling
+   SEARCH
    ============================================ */
 
 .nextra-search input {
@@ -460,7 +312,6 @@ pre code {
   border: 1px solid rgba(255, 248, 240, 0.06) !important;
   border-radius: 0.5rem !important;
   color: rgb(245, 240, 235) !important;
-  transition: all 150ms var(--ease-out-quart) !important;
 }
 
 .nextra-search input::placeholder {
@@ -469,7 +320,6 @@ pre code {
 
 .nextra-search input:focus {
   border-color: rgba(232, 168, 85, 0.5) !important;
-  box-shadow: 0 0 0 2px rgba(232, 168, 85, 0.2) !important;
   outline: none !important;
 }
 
@@ -478,10 +328,6 @@ pre code {
   border: 1px solid rgba(255, 248, 240, 0.08) !important;
   border-radius: 0.75rem !important;
   backdrop-filter: blur(20px);
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.08),
-    0 8px 24px rgba(0, 0, 0, 0.14),
-    0 24px 48px rgba(0, 0, 0, 0.18);
 }
 
 /* ============================================
@@ -494,7 +340,6 @@ pre code {
 
 .nextra-breadcrumb a {
   color: rgba(245, 240, 235, 0.5) !important;
-  transition: color 150ms var(--ease-out-quart) !important;
 }
 
 .nextra-breadcrumb a:hover {
@@ -502,7 +347,7 @@ pre code {
 }
 
 /* ============================================
-   PAGINATION - Premium styling
+   PAGINATION
    ============================================ */
 
 .nextra-nav-link {
@@ -510,35 +355,12 @@ pre code {
   border: 1px solid rgba(255, 248, 240, 0.06) !important;
   border-radius: 0.75rem !important;
   padding: 1rem !important;
-  transition: all 150ms var(--ease-out-quart);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Top edge highlight */
-.nextra-nav-link::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 5%,
-    rgba(255, 255, 255, 0.04) 50%,
-    transparent 95%
-  );
-  pointer-events: none;
+  transition: all 150ms ease;
 }
 
 .nextra-nav-link:hover {
   background-color: rgba(255, 248, 240, 0.04) !important;
   border-color: rgba(255, 248, 240, 0.1) !important;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.08),
-    0 4px 12px rgba(0, 0, 0, 0.12);
-  transform: translateY(-1px);
 }
 
 .nextra-nav-link span {
@@ -557,21 +379,19 @@ pre code {
   background-color: rgba(255, 248, 240, 0.04) !important;
   border: 1px solid rgba(255, 248, 240, 0.06) !important;
   border-radius: 0.5rem !important;
-  transition: all 150ms var(--ease-out-quart) !important;
 }
 
 .nextra-theme-toggle button:hover {
   background-color: rgba(255, 248, 240, 0.08) !important;
-  border-color: rgba(255, 248, 240, 0.1) !important;
 }
 
 /* ============================================
-   SCROLLBARS - Premium styling (matching desktop)
+   SCROLLBARS
    ============================================ */
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -579,26 +399,12 @@ pre code {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 100px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
+  background: rgba(122, 116, 110, 0.5);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-::-webkit-scrollbar-thumb:active {
-  background: rgba(232, 168, 85, 0.25);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
+  background: rgba(176, 168, 159, 0.5);
 }
 
 /* ============================================
@@ -619,9 +425,9 @@ pre code {
   box-shadow: 0 0 0 2px rgba(232, 168, 85, 0.4) !important;
 }
 
-/* Hide the Nextra footer - not needed */
 footer {
-  display: none !important;
+  border-top: 1px solid rgba(255, 248, 240, 0.06) !important;
+  background-color: rgba(12, 11, 10, 0.8) !important;
 }
 
 /* ============================================
@@ -641,32 +447,19 @@ nav:not(.nextra-nav-container) a,
 aside a[data-active="true"],
 aside a[aria-current="page"],
 aside a[aria-selected="true"],
-aside li.active > a,
+aside li.active a,
+aside .active,
 [class*="sidebar"] a[data-active="true"],
-[class*="sidebar"] a.active {
-  color: rgb(232, 168, 85) !important;
-  background-color: rgba(232, 168, 85, 0.1) !important;
-  border: none !important;
-  border-left: none !important;
-  border-radius: 0.5rem !important;
-}
-
-/* Prevent folder/section containers from getting active background */
-aside li.active,
-aside div.active,
-aside ul.active,
-aside details.active,
-aside summary.active,
-[class*="sidebar"] li.active:not(:has(> a[data-active="true"])),
-[class*="sidebar"] div.active,
-[class*="sidebar"] ul.active {
-  background-color: transparent !important;
+[class*="sidebar"] .active {
+  color: rgba(245, 240, 235, 0.95) !important;
+  background-color: rgba(232, 168, 85, 0.08) !important;
+  border-left: 2px solid rgb(232, 168, 85) !important;
 }
 
 aside a:hover,
 [class*="sidebar"] a:hover {
   color: rgba(245, 240, 235, 0.9) !important;
-  background-color: rgba(255, 248, 240, 0.04) !important;
+  background-color: rgba(255, 248, 240, 0.03) !important;
 }
 
 /* Ensure primary color is always amber */
@@ -698,7 +491,7 @@ html[class~="light"] {
     width: 280px !important;
     max-width: 80vw !important;
     transform: translateX(-100%) !important;
-    transition: transform 200ms var(--ease-out-expo) !important;
+    transition: transform 200ms ease-out !important;
   }
 
   .nextra-sidebar-container[data-open="true"],

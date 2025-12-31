@@ -1,9 +1,9 @@
-import { useEffect, useCallback, useRef, useState, lazy, Suspense } from "react";
+import { useEffect, useCallback, lazy, Suspense } from "react";
 import clsx from "clsx";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 import { useAppStore } from "./store";
 import { useOnline } from "./hooks";
@@ -20,6 +20,7 @@ import {
   DiffProfilesModal,
   AddContentModal,
   DeviceCodeModal,
+  LaunchPlanModal,
   ProfileJsonModal,
 } from "./components";
 import { formatContentName } from "./utils";
@@ -61,6 +62,8 @@ function App() {
     setConfirmState,
     debugDrag,
     setDebugDrag,
+    plan,
+    setPlan,
     loadProfiles,
     loadProfile,
     loadAccounts,
@@ -72,27 +75,17 @@ function App() {
   } = useAppStore();
 
   const isOnline = useOnline();
-  const [launchHidden, setLaunchHidden] = useState(false);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Content modal state
   const contentKind = useAppStore((s) => s.activeTab);
-
-  // Precache version data for instant dropdowns
-  const { precacheMcVersions, precacheFabricVersions, prefetchActiveAccountSkin } = useAppStore();
 
   // Initial load
   useEffect(() => {
     const loadInitial = async () => {
       await Promise.all([loadProfiles(), loadAccounts(), loadConfig()]);
-      // Precache version data and fetch real skin URL in background (don't await - non-blocking)
-      void precacheMcVersions();
-      void precacheFabricVersions();
-      void prefetchActiveAccountSkin();
     };
     void loadInitial();
-  }, [loadProfiles, loadAccounts, loadConfig, precacheMcVersions, precacheFabricVersions, prefetchActiveAccountSkin]);
+  }, [loadProfiles, loadAccounts, loadConfig]);
 
   // Load profile when selection changes
   useEffect(() => {
@@ -110,51 +103,14 @@ function App() {
       if (event.payload.stage === "error") {
         notify("Launch failed", event.payload.message ?? "Unknown error");
       }
+      if (event.payload.stage === "done") {
+        setTimeout(() => setLaunchStatus(null), 2500);
+      }
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
   }, [setLaunchStatus, notify]);
-
-  // Auto-hide running banner after a short delay
-  useEffect(() => {
-    if (!launchStatus) return;
-
-    setLaunchHidden(false);
-
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-    if (clearTimerRef.current) {
-      clearTimeout(clearTimerRef.current);
-      clearTimerRef.current = null;
-    }
-
-    if (launchStatus.stage === "running") {
-      // Only hide the banner, don't clear status while game is running
-      // This preserves the double-click prevention (if (launchStatus) return)
-      hideTimerRef.current = setTimeout(() => {
-        setLaunchHidden(true);
-      }, 3500);
-    }
-
-    if (launchStatus.stage === "done") {
-      clearTimerRef.current = setTimeout(() => setLaunchStatus(null), 2500);
-    }
-
-    // Clear error status after displaying notification, so user can try again
-    if (launchStatus.stage === "error") {
-      clearTimerRef.current = setTimeout(() => setLaunchStatus(null), 3000);
-    }
-  }, [launchStatus, setLaunchStatus]);
-
-  useEffect(() => {
-    return () => {
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
-    };
-  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -281,44 +237,41 @@ function App() {
   }, [selectedProfileId, activeTab, setConfirmState, runAction, loadProfile]);
 
   const handleLaunch = useCallback(async () => {
-    // Prevent double-click race condition - use getState() for synchronous check
-    // to avoid stale closure values between renders
-    if (useAppStore.getState().launchStatus) return;
-
     const activeAccount = getActiveAccount();
     if (!selectedProfileId || !activeAccount) {
       notify("No account", "Add an account first.");
       return;
     }
-
-    // Set status immediately to prevent double-clicks
-    setLaunchStatus({ stage: "queued" });
-
-    try {
+    await runAction(async () => {
       await invoke("launch_profile_cmd", {
         profileId: selectedProfileId,
         accountId: activeAccount.uuid,
       });
-      // Status will be updated by launch-status events
-    } catch (err) {
-      notify("Launch failed", String(err));
-      setLaunchStatus(null);
+      setLaunchStatus({ stage: "queued" });
+    });
+  }, [selectedProfileId, getActiveAccount, notify, runAction, setLaunchStatus]);
+
+  const handlePrepare = useCallback(async () => {
+    const activeAccount = getActiveAccount();
+    if (!selectedProfileId || !activeAccount) {
+      notify("No account", "Add an account first.");
+      return;
     }
-  }, [selectedProfileId, getActiveAccount, notify, setLaunchStatus]);
+    await runAction(async () => {
+      const planData = await invoke<typeof plan>("prepare_profile_cmd", {
+        profile_id: selectedProfileId,
+        account_id: activeAccount.uuid,
+      });
+      setPlan(planData);
+      setActiveModal("prepare");
+    });
+  }, [selectedProfileId, getActiveAccount, notify, runAction, setPlan, setActiveModal]);
 
   const handleOpenInstance = useCallback(async () => {
     if (!selectedProfileId) return;
-    try {
-      const path = await invoke<string>("instance_path_cmd", { profile_id: selectedProfileId });
-      try {
-        await revealItemInDir(path);
-      } catch {
-        await openPath(path);
-      }
-    } catch (err) {
-      notify("Failed to open folder", String(err));
-    }
-  }, [selectedProfileId, notify]);
+    const path = await invoke<string>("instance_path_cmd", { profile_id: selectedProfileId });
+    await openPath(path);
+  }, [selectedProfileId]);
 
   const handleCopyCommand = useCallback(async () => {
     if (!selectedProfileId) return;
@@ -393,6 +346,7 @@ function App() {
                   <ProfileView
                     key={profile.id}
                     onLaunch={handleLaunch}
+                    onPrepare={handlePrepare}
                     onOpenInstance={handleOpenInstance}
                     onCopyCommand={handleCopyCommand}
                     onShowJson={() => setActiveModal("json")}
@@ -441,11 +395,11 @@ function App() {
           </main>
 
           {launchStatus && (
-            <div className={clsx("launch-status", launchHidden && "is-hidden")}>
-              <div className={`launch-status-dot${launchStatus.stage === "running" ? " is-running" : ""}`} />
+            <div className="launch-status">
+              <div className="launch-status-dot" />
               <div className="launch-status-text">
-                {launchStatus.stage.charAt(0).toUpperCase() + launchStatus.stage.slice(1)}
-                {launchStatus.message && `: ${launchStatus.message}`}
+                {launchStatus.stage}
+                {launchStatus.message && ` — ${launchStatus.message}`}
               </div>
             </div>
           )}
@@ -480,6 +434,12 @@ function App() {
           open={activeModal === "device-code"}
           onClose={() => setActiveModal(null)}
           onSuccess={handleDeviceCodeSuccess}
+        />
+
+        <LaunchPlanModal
+          open={activeModal === "prepare"}
+          plan={plan}
+          onClose={() => setActiveModal(null)}
         />
 
         <ProfileJsonModal

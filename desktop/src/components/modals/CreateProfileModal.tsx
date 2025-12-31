@@ -159,30 +159,41 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
   return (
     <Modal open={open} onClose={onClose} title="New profile">
       <div className="create-profile-modal">
-        {/* Template selector */}
-        <Field label="Template">
-          <select
-            className="select"
-            value={selectedTemplateId}
-            onChange={(e) => handleTemplateSelect(e.target.value)}
-            disabled={templatesLoading}
-          >
-            {templatesLoading ? (
-              <option>Loading...</option>
-            ) : templates.length === 0 ? (
-              <option>No templates available</option>
-            ) : (
-              templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}{template.loader?.type ? ` (${template.loader.type})` : ""}
-                </option>
-              ))
-            )}
-          </select>
-          {selectedTemplate?.description && (
-            <p className="field-hint">{selectedTemplate.description}</p>
+        {/* Template list */}
+        <div className="template-section">
+          <label className="field-label">Template</label>
+          {templatesLoading ? (
+            <div className="template-loading">Loading templates...</div>
+          ) : templates.length === 0 ? (
+            <div className="template-empty">No templates available</div>
+          ) : (
+            <div className="template-list">
+              {templates.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className={clsx("template-item", selectedTemplateId === template.id && "selected")}
+                  onClick={() => handleTemplateSelect(template.id)}
+                >
+                  <div className="template-item-radio">
+                    <div className="template-item-radio-inner" />
+                  </div>
+                  <div className="template-item-content">
+                    <div className="template-item-header">
+                      <span className="template-item-name">{template.name}</span>
+                      {template.loader?.type && (
+                        <span className="template-item-loader">{template.loader.type}</span>
+                      )}
+                    </div>
+                    {template.description && (
+                      <span className="template-item-description">{template.description}</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
           )}
-        </Field>
+        </div>
 
         {/* Minecraft version selector */}
         <Field label="Minecraft version">
@@ -203,7 +214,7 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
                 ))
               )}
             </select>
-            <label className="checkbox-label">
+            <label className="snapshots-toggle">
               <input
                 type="checkbox"
                 checked={showSnapshots}
@@ -238,6 +249,121 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
           gap: 20px;
         }
 
+        .template-section {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .template-list {
+          display: flex;
+          flex-direction: column;
+          border: 1px solid var(--border-subtle);
+          border-radius: 10px;
+          overflow: hidden;
+        }
+
+        .template-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 12px 14px;
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid var(--border-subtle);
+          cursor: pointer;
+          transition: background 0.15s ease;
+          text-align: left;
+          width: 100%;
+        }
+
+        .template-item:last-child {
+          border-bottom: none;
+        }
+
+        .template-item:hover {
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .template-item.selected {
+          background: rgba(232, 168, 85, 0.06);
+        }
+
+        .template-item-radio {
+          width: 16px;
+          height: 16px;
+          border: 2px solid var(--border-default);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          margin-top: 1px;
+          transition: border-color 0.15s ease;
+        }
+
+        .template-item.selected .template-item-radio {
+          border-color: var(--accent-primary);
+        }
+
+        .template-item-radio-inner {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: transparent;
+          transition: background 0.15s ease;
+        }
+
+        .template-item.selected .template-item-radio-inner {
+          background: var(--accent-primary);
+        }
+
+        .template-item-content {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .template-item-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .template-item-name {
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--text-primary);
+        }
+
+        .template-item-loader {
+          font-size: 11px;
+          color: var(--text-muted);
+          background: rgba(255, 255, 255, 0.06);
+          padding: 2px 6px;
+          border-radius: 4px;
+          text-transform: capitalize;
+        }
+
+        .template-item-description {
+          font-size: 12px;
+          color: var(--text-muted);
+          line-height: 1.4;
+        }
+
+        .template-loading,
+        .template-empty {
+          padding: 24px;
+          text-align: center;
+          font-size: 13px;
+          color: var(--text-muted);
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid var(--border-subtle);
+          border-radius: 10px;
+        }
+
         .version-row {
           display: flex;
           gap: 12px;
@@ -246,6 +372,20 @@ export function CreateProfileModal({ open, onClose, onSubmit }: CreateProfileMod
 
         .version-row .select {
           flex: 1;
+        }
+
+        .snapshots-toggle {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          font-size: 12px;
+          color: var(--text-muted);
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .snapshots-toggle input {
+          cursor: pointer;
         }
       `}</style>
     </Modal>

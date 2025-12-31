@@ -2,13 +2,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import clsx from "clsx";
 import { useAppStore } from "../store";
-import type { ContentRef, ContentTab, Profile } from "../types";
-import { getContentTypeLabel, getContentTypeLabelPlural } from "../utils";
-import { ContentItemRow } from "./ContentItemRow";
-import type { Platform } from "./PlatformIcon";
+import type { ContentRef, ContentTab, Profile, ManifestVersion, MinecraftVersionsResponse } from "../types";
+import { getContentTypeLabel, getContentTypeLabelPlural, formatContentName, formatVersion } from "../utils";
+import { PlatformIcon, PLATFORM_COLORS, type Platform } from "./PlatformIcon";
 
 interface ProfileViewProps {
   onLaunch: () => void;
+  onPrepare: () => void;
   onOpenInstance: () => void;
   onCopyCommand: () => void;
   onShowJson: () => void;
@@ -18,8 +18,19 @@ interface ProfileViewProps {
 
 type ExpandedDropdown = "version" | "loader" | null;
 
+function getPlatformLabel(platform: Platform): string {
+  if (platform === "modrinth") return "Modrinth";
+  if (platform === "curseforge") return "CurseForge";
+  return "Local";
+}
+
+function getPlatformColor(platform: Platform): string {
+  return PLATFORM_COLORS[platform as keyof typeof PLATFORM_COLORS] || PLATFORM_COLORS.local;
+}
+
 export function ProfileView({
   onLaunch,
+  onPrepare,
   onOpenInstance,
   onCopyCommand,
   onShowJson,
@@ -35,13 +46,6 @@ export function ProfileView({
     loadProfile,
     notify,
     launchStatus,
-    // Precached version data from store
-    mcVersions,
-    mcVersionLoading: mcVersionsLoading,
-    loaderVersions: fabricVersions,
-    loaderLoading: fabricLoading,
-    precacheMcVersions,
-    precacheFabricVersions,
   } = useAppStore();
 
   const activeAccount = getActiveAccount();
@@ -50,7 +54,11 @@ export function ProfileView({
 
   // Inline version/loader editing state
   const [expandedDropdown, setExpandedDropdown] = useState<ExpandedDropdown>(null);
+  const [mcVersions, setMcVersions] = useState<ManifestVersion[]>([]);
+  const [mcVersionsLoading, setMcVersionsLoading] = useState(false);
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const [fabricVersions, setFabricVersions] = useState<string[]>([]);
+  const [fabricLoading, setFabricLoading] = useState(false);
   const [selectedLoaderType, setSelectedLoaderType] = useState<string>("");
   const [selectedLoaderVersion, setSelectedLoaderVersion] = useState<string>("");
   const [saving, setSaving] = useState(false);
@@ -69,32 +77,53 @@ export function ProfileView({
     }
   }, [expandedDropdown]);
 
-  // Ensure versions are loaded (fallback if precache hasn't completed yet)
-  const handleExpandVersion = useCallback(() => {
+  // Load MC versions when version dropdown opens
+  const loadMcVersions = useCallback(async () => {
+    if (mcVersions.length > 0) return;
+    setMcVersionsLoading(true);
+    try {
+      const response = await invoke<MinecraftVersionsResponse>("fetch_minecraft_versions_cmd");
+      setMcVersions(response.versions);
+    } catch (err) {
+      notify("Failed to load versions", String(err));
+    } finally {
+      setMcVersionsLoading(false);
+    }
+  }, [mcVersions.length, notify]);
+
+  // Load Fabric versions when loader dropdown opens
+  const loadFabricVersions = useCallback(async () => {
+    if (fabricVersions.length > 0) return;
+    setFabricLoading(true);
+    try {
+      const versions = await invoke<string[]>("fetch_fabric_versions_cmd");
+      setFabricVersions(versions);
+    } catch (err) {
+      notify("Failed to load Fabric versions", String(err));
+    } finally {
+      setFabricLoading(false);
+    }
+  }, [fabricVersions.length, notify]);
+
+  const handleExpandVersion = () => {
     if (expandedDropdown === "version") {
       setExpandedDropdown(null);
     } else {
       setExpandedDropdown("version");
-      // Trigger load if not cached yet (will be instant if already cached)
-      if (mcVersions.length === 0) {
-        void precacheMcVersions();
-      }
+      void loadMcVersions();
     }
-  }, [expandedDropdown, mcVersions.length, precacheMcVersions]);
+  };
 
-  const handleExpandLoader = useCallback(() => {
+  const handleExpandLoader = () => {
     if (expandedDropdown === "loader") {
       setExpandedDropdown(null);
     } else {
       setExpandedDropdown("loader");
       setSelectedLoaderType(profile?.loader?.type || "");
       setSelectedLoaderVersion(profile?.loader?.version || "");
-      // Trigger load if not cached yet (will be instant if already cached)
-      if (fabricVersions.length === 0) {
-        void precacheFabricVersions();
-      }
+      void loadFabricVersions();
     }
-  }, [expandedDropdown, profile?.loader?.type, profile?.loader?.version, fabricVersions.length, precacheFabricVersions]);
+  };
 
   const handleVersionSelect = async (version: string) => {
     if (!profile || version === profile.mcVersion) {
@@ -342,14 +371,11 @@ export function ProfileView({
           </div>
         </div>
         <button
-          className="btn-launch"
+          className="btn btn-primary"
           onClick={onLaunch}
           disabled={!activeAccount || isWorking || !!launchStatus}
         >
-          <svg className="btn-launch-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 6.82v10.36c0 .79.87 1.27 1.54.84l8.14-5.18c.62-.39.62-1.29 0-1.69L9.54 5.98C8.87 5.55 8 6.03 8 6.82z" />
-          </svg>
-          <span>{launchStatus ? launchStatus.stage.charAt(0).toUpperCase() + launchStatus.stage.slice(1) : "Launch"}</span>
+          {launchStatus ? launchStatus.stage.charAt(0).toUpperCase() + launchStatus.stage.slice(1) : "Launch"}
         </button>
       </div>
 
@@ -361,7 +387,7 @@ export function ProfileView({
               Mods<span className="count">{contentCounts.mods}</span>
             </button>
             <button className={clsx("content-tab", activeTab === "resourcepacks" && "active")} onClick={() => setActiveTab("resourcepacks")}>
-              Packs<span className="count">{contentCounts.resourcepacks}</span>
+              Resource Packs<span className="count">{contentCounts.resourcepacks}</span>
             </button>
             <button className={clsx("content-tab", activeTab === "shaderpacks" && "active")} onClick={() => setActiveTab("shaderpacks")}>
               Shaders<span className="count">{contentCounts.shaderpacks}</span>
@@ -390,66 +416,100 @@ export function ProfileView({
               const platform = (item.platform?.toLowerCase() || "local") as Platform;
               const isPinned = item.pinned ?? false;
               const isEnabled = item.enabled ?? true;
+              const platformColor = getPlatformColor(platform);
+              const version = formatVersion(item.version);
 
               return (
-                <ContentItemRow
-                  key={item.hash}
-                  item={{
-                    name: item.name,
-                    hash: item.hash,
-                    version: item.version,
-                    platform: item.platform,
-                    project_id: item.project_id,
-                    enabled: item.enabled,
-                    pinned: item.pinned,
-                  }}
-                  contentType={activeTab}
-                  actions={
-                    <>
-                      <button
-                        className={clsx("btn-icon", !isEnabled && "btn-icon-active")}
-                        onClick={() => handleToggleEnabled(item)}
-                        disabled={togglingEnabled === item.hash}
-                        title={isEnabled ? "Disable (won't load)" : "Enable (load in instance)"}
+                <div key={item.hash} className={clsx("content-item-v2", isPinned && "content-item-pinned", !isEnabled && "content-item-disabled")}>
+                  {/* Platform indicator stripe */}
+                  <div
+                    className="content-item-platform-stripe"
+                    style={{ backgroundColor: platformColor }}
+                  />
+
+                  {/* Platform icon */}
+                  <div className="content-item-icon">
+                    <PlatformIcon platform={platform} size="lg" />
+                  </div>
+
+                  {/* Content info */}
+                  <div className="content-item-main">
+                    <div className="content-item-header">
+                      <h5 className="content-item-name">{formatContentName(item.name)}</h5>
+                      <div className="content-item-badges">
+                        {isPinned && (
+                          <span className="content-badge content-badge-pinned" title="Pinned - won't auto-update">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M16 4h1v1h-1zm1 1h1v1h-1zm1 1h1v2h-1zm0 2h-1v1h1zm-1 1h-1v1h1zm-1 1h-1v1h1v1h-1v1h-1v1h-1v1h-1v1h1v3h-2v-3h1v-1h-1v-1h-1v-1h-1v-1h-1v-1h-1v-1H9v-1H8V9h1V8h1V7h1V6h2v1h1v1h1V7h1V6h1V5h1v1z"/>
+                            </svg>
+                            Pinned
+                          </span>
+                        )}
+                        {!isEnabled && (
+                          <span className="content-badge content-badge-disabled" title="Disabled - won't be loaded">
+                            Disabled
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="content-item-meta">
+                      {version && (
+                        <span className="content-meta-version">v{version}</span>
+                      )}
+                      <span
+                        className="content-meta-platform"
+                        style={{ color: platformColor }}
                       >
-                        {togglingEnabled === item.hash ? (
+                        {getPlatformLabel(platform)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="content-item-actions">
+                    <button
+                      className={clsx("btn-icon", !isEnabled && "btn-icon-active")}
+                      onClick={() => handleToggleEnabled(item)}
+                      disabled={togglingEnabled === item.hash}
+                      title={isEnabled ? "Disable (won't load)" : "Enable (load in instance)"}
+                    >
+                      {togglingEnabled === item.hash ? (
+                        <span className="btn-icon-loading" />
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 2v6" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M6.4 4.8a8 8 0 1 0 11.2 0" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </button>
+                    {platform !== "local" && (
+                      <button
+                        className={clsx("btn-icon", isPinned && "btn-icon-active")}
+                        onClick={() => handleTogglePin(item)}
+                        disabled={togglingPin === item.hash}
+                        title={isPinned ? "Unpin (allow auto-updates)" : "Pin (prevent auto-updates)"}
+                      >
+                        {togglingPin === item.hash ? (
                           <span className="btn-icon-loading" />
                         ) : (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 2v6" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M6.4 4.8a8 8 0 1 0 11.2 0" strokeLinecap="round" strokeLinejoin="round" />
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill={isPinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2L12 12M12 12L8 8M12 12L16 8M5 15H19M7 19H17" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         )}
                       </button>
-                      {platform !== "local" && (
-                        <button
-                          className={clsx("btn-icon", isPinned && "btn-icon-active")}
-                          onClick={() => handleTogglePin(item)}
-                          disabled={togglingPin === item.hash}
-                          title={isPinned ? "Unpin (allow auto-updates)" : "Pin (prevent auto-updates)"}
-                        >
-                          {togglingPin === item.hash ? (
-                            <span className="btn-icon-loading" />
-                          ) : (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill={isPinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
-                              <path d="M12 2L12 12M12 12L8 8M12 12L16 8M5 15H19M7 19H17" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )}
-                        </button>
-                      )}
-                      <button
-                        className="btn-icon btn-icon-danger"
-                        onClick={() => onRemoveContent(item)}
-                        title="Remove from profile"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                      </button>
-                    </>
-                  }
-                />
+                    )}
+                    <button
+                      className="btn-icon btn-icon-danger"
+                      onClick={() => onRemoveContent(item)}
+                      title="Remove from profile"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -464,6 +524,7 @@ export function ProfileView({
         <div className="actions-row">
           <button className="btn btn-ghost btn-sm" onClick={onOpenInstance}>Open folder</button>
           <button className="btn btn-ghost btn-sm" onClick={onCopyCommand}>Copy CLI command</button>
+          <button className="btn btn-ghost btn-sm" onClick={onPrepare}>View launch plan</button>
           <button className="btn btn-ghost btn-sm" onClick={onShowJson}>View JSON</button>
         </div>
       </div>

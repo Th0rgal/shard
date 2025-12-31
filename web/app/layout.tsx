@@ -1,63 +1,25 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Head } from "nextra/components";
 import { ThemeProvider } from "@/components/theme-provider";
-import { JsonLd } from "@/components/JsonLd";
-import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import "./globals.css";
 
-export const viewport: Viewport = {
-  themeColor: "#0c0b0a",
-  colorScheme: "dark",
-  width: "device-width",
-  initialScale: 1,
-  viewportFit: "cover",
-};
-
 export const metadata: Metadata = {
-  metadataBase: new URL("https://shard.thomas.md"),
+  metadataBase: new URL("https://shard.sh"),
   title: {
-    default: "Shard Launcher | Reproducible Minecraft launcher with a deduplicated library",
+    default: "Shard Launcher",
     template: "%s | Shard Launcher",
   },
-  description:
-    "Open-source Minecraft launcher with declarative profiles, content-addressed storage, and Modrinth/CurseForge integration. CLI and desktop.",
+  description: "A minimal, content-addressed Minecraft launcher focused on stability and reproducibility",
   applicationName: "Shard Launcher",
   generator: "Next.js",
-  keywords: [
-    "minecraft",
-    "launcher",
-    "mod manager",
-    "fabric",
-    "forge",
-    "quilt",
-    "neoforge",
-    "modrinth",
-    "curseforge",
-    "open source",
-  ],
-  authors: [{ name: "Thomas Marchand", url: "https://thomas.md" }],
-  creator: "Thomas Marchand",
-  publisher: "Shard",
-  robots: {
-    index: true,
-    follow: true,
-  },
   twitter: {
     card: "summary_large_image",
-    title: "Shard Launcher",
-    description:
-      "Open-source Minecraft launcher with declarative profiles, content-addressed storage, and Modrinth/CurseForge integration.",
-    creator: "@music_music_yo",
   },
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://shard.thomas.md",
     siteName: "Shard Launcher",
-    title: "Shard Launcher",
-    description:
-      "Open-source Minecraft launcher with declarative profiles, content-addressed storage, and Modrinth/CurseForge integration. CLI and desktop.",
   },
   icons: {
     icon: [
@@ -69,16 +31,6 @@ export const metadata: Metadata = {
       { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
     ],
   },
-  // Safari-specific
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Shard",
-  },
-  // Additional meta for better integration
-  other: {
-    "msapplication-TileColor": "#0c0b0a",
-  },
 };
 
 export default function RootLayout({
@@ -89,22 +41,13 @@ export default function RootLayout({
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <Head>
-        <JsonLd />
-        {/* Additional theme-color variants for different contexts */}
-        <meta
-          name="theme-color"
-          media="(prefers-color-scheme: light)"
-          content="#0c0b0a"
-        />
-        <meta
-          name="theme-color"
-          media="(prefers-color-scheme: dark)"
-          content="#0c0b0a"
-        />
+        <meta name="theme-color" content="#0c0b0a" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       </Head>
       <body className="min-h-dvh bg-mesh-subtle">
-        <GoogleAnalytics />
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

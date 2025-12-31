@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import clsx from "clsx";
 import { useAppStore } from "../store";
 import type { StoreProject, StoreVersion } from "../types";
@@ -25,21 +24,6 @@ interface StoreSearchInput {
 }
 
 type StorePlatform = "all" | "modrinth" | "curseforge";
-
-// Get URL to the project page on the source platform
-function getProjectUrl(project: StoreProject, category: StoreCategory): string {
-  const typeMap: Record<StoreCategory, { modrinth: string; curseforge: string }> = {
-    mods: { modrinth: "mod", curseforge: "mc-mods" },
-    resourcepacks: { modrinth: "resourcepack", curseforge: "texture-packs" },
-    shaderpacks: { modrinth: "shader", curseforge: "shaders" },
-  };
-
-  const paths = typeMap[category];
-  if (project.platform === "modrinth") {
-    return `https://modrinth.com/${paths.modrinth}/${project.id}`;
-  }
-  return `https://www.curseforge.com/minecraft/${paths.curseforge}/${project.id}`;
-}
 
 // Module-level cache for popular results (persists across re-renders)
 const popularCache: Record<StoreCategory, StoreProject[]> = {
@@ -97,32 +81,6 @@ export function StoreView() {
   // Results to display: search results if searching, otherwise cached popular
   const displayResults = searchResults ?? popularCache[category];
   const isShowingPopular = searchResults === null && displayResults.length > 0;
-
-  // Check if a project is already installed in the current profile
-  const isProjectInstalled = useCallback((project: StoreProject): boolean => {
-    if (!profile) return false;
-    const contentArray = category === "mods" ? profile.mods
-      : category === "resourcepacks" ? profile.resourcepacks
-      : profile.shaderpacks;
-
-    // Normalize name for comparison (lowercase, remove special chars)
-    const normalizeForComparison = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const projectNameNorm = normalizeForComparison(project.name);
-    const projectSlugNorm = normalizeForComparison(project.slug);
-
-    return contentArray.some((item) => {
-      // Try exact platform + project_id match (project_id could be id or slug)
-      // Use case-insensitive comparison for platform since storage may have inconsistent casing
-      if (item.platform?.toLowerCase() === project.platform.toLowerCase()) {
-        if (item.project_id === project.id || item.project_id === project.slug) {
-          return true;
-        }
-      }
-      // Fall back to name-based matching for items without platform metadata
-      const itemNameNorm = normalizeForComparison(item.name);
-      return itemNameNorm === projectNameNorm || itemNameNorm === projectSlugNorm;
-    });
-  }, [profile, category]);
 
   const handleSearch = useCallback(async () => {
     if (!query.trim()) {
@@ -340,18 +298,16 @@ export function StoreView() {
           {displayResults.map((project) => (
             <div
               key={`${project.platform}-${project.id}`}
-              className={clsx("content-item-v2", selectedProject?.id === project.id && "content-item-selected")}
+              className={clsx("content-item", selectedProject?.id === project.id && "selected")}
               onClick={() => handleSelectProject(project)}
               style={{
                 cursor: "pointer",
                 background: selectedProject?.id === project.id ? "rgba(232, 168, 85, 0.08)" : undefined,
                 borderColor: selectedProject?.id === project.id ? "rgba(232, 168, 85, 0.2)" : undefined,
-                alignItems: "flex-start",
               }}
             >
-              {/* Project icon */}
-              <div className="content-item-icon" style={{ width: 48, height: 48, alignSelf: "flex-start" }}>
-                {project.icon_url ? (
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flex: 1, minWidth: 0 }}>
+                {project.icon_url && (
                   <img
                     src={project.icon_url}
                     alt=""
@@ -360,9 +316,11 @@ export function StoreView() {
                       height: 48,
                       borderRadius: 10,
                       objectFit: "cover",
+                      flexShrink: 0,
                     }}
                   />
-                ) : (
+                )}
+                {!project.icon_url && (
                   <div
                     style={{
                       width: 48,
@@ -373,90 +331,53 @@ export function StoreView() {
                       alignItems: "center",
                       justifyContent: "center",
                       fontSize: 20,
+                      flexShrink: 0,
                     }}
                   >
                     {category === "mods" ? "M" : category === "resourcepacks" ? "R" : "S"}
                   </div>
                 )}
-              </div>
-
-              {/* Content info */}
-              <div className="content-item-main">
-                <div className="content-item-header">
-                  <h5 className="content-item-name">{project.name}</h5>
-                </div>
-                <p
-                  style={{
-                    margin: "4px 0 0",
-                    fontSize: 13,
-                    color: "var(--text-secondary)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {project.description}
-                </p>
-                <div className="content-item-meta" style={{ marginTop: 6 }}>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatDownloads(project.downloads)} downloads</span>
-                  <button
-                    className="content-meta-platform content-meta-platform-link"
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h5 style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{project.name}</h5>
+                  <p
                     style={{
-                      color: project.platform === "modrinth" ? "#1ed760" : "#f66036",
+                      margin: "4px 0 0",
+                      fontSize: 13,
+                      color: "var(--text-secondary)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openUrl(getProjectUrl(project, category));
-                    }}
-                    title={`Open on ${project.platform === "modrinth" ? "Modrinth" : "CurseForge"}`}
                   >
-                    {project.platform === "modrinth" ? "Modrinth" : "CurseForge"}
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </button>
+                    {project.description}
+                  </p>
+                  <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}>
+                    <span>{formatDownloads(project.downloads)} downloads</span>
+                    <span
+                      style={{
+                        background: project.platform === "modrinth" ? "rgba(30, 215, 96, 0.15)" : "rgba(246, 96, 54, 0.15)",
+                        color: project.platform === "modrinth" ? "#1ed760" : "#f66036",
+                        padding: "1px 6px",
+                        borderRadius: 4,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {project.platform}
+                    </span>
+                  </div>
                 </div>
               </div>
-
-              {/* Quick install button - vertically centered */}
+              {/* Quick install button */}
               {selectedProfileId && (
-                <div className="content-item-actions" style={{ opacity: 1, alignSelf: "center" }}>
-                  {isProjectInstalled(project) ? (
-                    <div
-                      className="btn-icon"
-                      style={{
-                        color: "var(--success)",
-                        cursor: "default",
-                        background: "rgba(30, 215, 96, 0.1)",
-                      }}
-                      title="Already installed"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    </div>
-                  ) : (
-                    <button
-                      className="btn-icon btn-install"
-                      onClick={(e) => handleQuickInstall(project, e)}
-                      disabled={quickInstalling === `${project.platform}-${project.id}`}
-                      title="Install latest compatible version"
-                    >
-                      {quickInstalling === `${project.platform}-${project.id}` ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                          <circle cx="12" cy="12" r="10" opacity="0.3" />
-                          <path d="M12 6v6l4 2" />
-                        </svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                          <path d="M12 5v14M5 12h14" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
-                </div>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={(e) => handleQuickInstall(project, e)}
+                  disabled={quickInstalling === `${project.platform}-${project.id}`}
+                  style={{ flexShrink: 0 }}
+                  title="Install latest compatible version"
+                >
+                  {quickInstalling === `${project.platform}-${project.id}` ? "..." : "Install"}
+                </button>
               )}
             </div>
           ))}
@@ -477,23 +398,9 @@ export function StoreView() {
               overflow: "auto",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>
-                {selectedProject.name}
-              </h4>
-              <button
-                className="btn-icon"
-                onClick={() => openUrl(getProjectUrl(selectedProject, category))}
-                title={`Open on ${selectedProject.platform === "modrinth" ? "Modrinth" : "CurseForge"}`}
-                style={{ color: selectedProject.platform === "modrinth" ? "#1ed760" : "#f66036" }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                  <polyline points="15 3 21 3 21 9" />
-                  <line x1="10" y1="14" x2="21" y2="3" />
-                </svg>
-              </button>
-            </div>
+            <h4 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 600 }}>
+              {selectedProject.name}
+            </h4>
             <p style={{ margin: "0 0 20px", fontSize: 13, color: "var(--text-secondary)" }}>
               {selectedProject.description}
             </p>

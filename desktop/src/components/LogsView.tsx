@@ -33,12 +33,6 @@ export function LogsView() {
   const [watching, setWatching] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastEventAtRef = useRef<number>(0);
-
-  const sanitizeEventSegment = useCallback((value: string) => (
-    value.replace(/[^a-zA-Z0-9\-/:_]/g, "_")
-  ), []);
 
   const loadLogFiles = useCallback(async () => {
     if (!selectedProfileId) return;
@@ -79,7 +73,7 @@ export function LogsView() {
         }]);
       } else {
         const entries = await invoke<LogEntry[]>("read_logs_cmd", {
-          profileId: selectedProfileId,
+          profile_id: selectedProfileId,
           file: file.name,
           lines: null,
         });
@@ -102,10 +96,9 @@ export function LogsView() {
       setLogs([]);
 
       try {
-        const eventName = `log-entries-${sanitizeEventSegment(selectedProfileId)}`;
+        const eventName = `log-entries-${selectedProfileId}`;
         unlistenRef.current = await listen<LogEntry[]>(eventName, (event) => {
           if (cancelled) return;
-          lastEventAtRef.current = Date.now();
           setLogs(prev => {
             const newLogs = [...prev, ...event.payload];
             if (newLogs.length > MAX_LOG_ENTRIES) {
@@ -117,37 +110,8 @@ export function LogsView() {
 
         await invoke("start_log_watch", { profileId: selectedProfileId });
         setWatching(true);
-
-        try {
-          const entries = await invoke<LogEntry[]>("read_logs_cmd", {
-            profileId: selectedProfileId,
-            file: null,
-            lines: MAX_LOG_ENTRIES,
-          });
-          if (!cancelled) {
-            setLogs(entries);
-          }
-        } catch (err) {
-          console.warn("[logs] Failed to read initial logs:", err);
-        }
-
-        pollTimerRef.current = setInterval(async () => {
-          if (cancelled) return;
-          const now = Date.now();
-          if (now - lastEventAtRef.current < 1500) return;
-          try {
-            const entries = await invoke<LogEntry[]>("read_logs_cmd", {
-              profileId: selectedProfileId,
-              file: null,
-              lines: MAX_LOG_ENTRIES,
-            });
-            setLogs(entries);
-          } catch (err) {
-            console.warn("[logs] Polling read failed:", err);
-          }
-        }, 1500);
       } catch (err) {
-        console.warn("[logs] Failed to start log watch:", err);
+        console.error("Failed to start log watch:", err);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -158,10 +122,6 @@ export function LogsView() {
     return () => {
       cancelled = true;
       setWatching(false);
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
       if (unlistenRef.current) {
         unlistenRef.current();
         unlistenRef.current = null;
@@ -294,32 +254,30 @@ export function LogsView() {
       {(tab === "history" || tab === "crashes") && !selectedFile && (
         <div className="logs-file-list">
           {((tab === "history" ? logFiles : crashReports).length === 0) ? (
-            <div className="empty-state-container">
-              <div className="empty-state">
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ opacity: 0.4, marginBottom: 16 }}>
-                  {tab === "crashes" ? (
-                    <>
-                      <path d="M24 10L40 38H8L24 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M24 20v8M24 32h.02" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </>
-                  ) : (
-                    <>
-                      <rect x="10" y="8" width="28" height="32" rx="3" stroke="currentColor" strokeWidth="2" />
-                      <path d="M16 16h16M16 24h12M16 32h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </>
-                  )}
-                </svg>
-                <h3>
-                  {tab === "crashes"
-                    ? "No crash reports"
-                    : "No log files yet"}
-                </h3>
-                <p style={{ marginBottom: 0 }}>
-                  {tab === "crashes"
-                    ? "Crash reports appear when the game encounters errors"
-                    : "Launch the game to generate logs"}
-                </p>
-              </div>
+            <div className="logs-empty-state">
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style={{ opacity: 0.3 }}>
+                {tab === "crashes" ? (
+                  <>
+                    <path d="M20 8L32 30H8L20 8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M20 16v6M20 26h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </>
+                ) : (
+                  <>
+                    <rect x="10" y="8" width="20" height="24" rx="2" stroke="currentColor" strokeWidth="2" />
+                    <path d="M14 14h12M14 20h8M14 26h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </>
+                )}
+              </svg>
+              <p>
+                {tab === "crashes"
+                  ? "No crash reports"
+                  : "No log files yet"}
+              </p>
+              <span>
+                {tab === "crashes"
+                  ? "Crash reports appear when the game encounters errors"
+                  : "Launch the game to generate logs"}
+              </span>
             </div>
           ) : (
             (tab === "history" ? logFiles : crashReports).map((file) => (
@@ -363,62 +321,47 @@ export function LogsView() {
             </div>
           )}
 
-          {loading && (
-            <div className="logs-loading">
-              <svg className="spin" width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" />
-              </svg>
-            </div>
-          )}
-
-          {!loading && filteredLogs.length === 0 && (
-            <div className="empty-state-container" style={{ flex: 1 }}>
-              <div className="empty-state">
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ opacity: 0.4, marginBottom: 16 }}>
-                  <circle cx="24" cy="24" r="16" stroke="currentColor" strokeWidth="2" />
-                  <path d="M24 16v8l5 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <div ref={logsContainerRef} className="logs-output">
+            {loading && (
+              <div className="logs-loading">
+                <svg className="spin" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" />
                 </svg>
-                <h3>{logs.length === 0 ? "No logs yet" : "No matching logs"}</h3>
-                <p style={{ marginBottom: 0 }}>
-                  {logs.length === 0
-                    ? "Launch the game to see live output"
-                    : "Try adjusting your filter settings"}
-                </p>
               </div>
-            </div>
-          )}
+            )}
 
-          {!loading && filteredLogs.length > 0 && (
-            <>
-              <div ref={logsContainerRef} className="logs-output">
-                {filteredLogs.map((entry, i) => (
-                  <div key={`${entry.line_number}-${i}`} className="logs-line" data-level={entry.level}>
-                    {entry.timestamp && (
-                      <span className="logs-time">{entry.timestamp}</span>
-                    )}
-                    {entry.level !== "unknown" && (
-                      <span className="logs-level" style={{ color: LEVEL_COLORS[entry.level] }}>
-                        {entry.level.toUpperCase()}
-                      </span>
-                    )}
-                    <span className="logs-message" style={{ color: LEVEL_COLORS[entry.level] }}>
-                      {entry.message}
-                    </span>
-                  </div>
-                ))}
+            {!loading && filteredLogs.length === 0 && (
+              <div className="logs-empty-output">
+                {logs.length === 0 ? "No logs yet. Launch the game to see output." : "No logs match your filter."}
               </div>
+            )}
 
-              <div className="logs-status">
-                <span>{filteredLogs.length} of {logs.length} entries</span>
-                {tab === "latest" && watching && (
-                  <span className="logs-status-live">
-                    <span className="logs-live-dot" />
-                    Live
+            {!loading && filteredLogs.map((entry, i) => (
+              <div key={`${entry.line_number}-${i}`} className="logs-line" data-level={entry.level}>
+                {entry.timestamp && (
+                  <span className="logs-time">{entry.timestamp}</span>
+                )}
+                {entry.level !== "unknown" && (
+                  <span className="logs-level" style={{ color: LEVEL_COLORS[entry.level] }}>
+                    {entry.level.toUpperCase()}
                   </span>
                 )}
+                <span className="logs-message" style={{ color: LEVEL_COLORS[entry.level] }}>
+                  {entry.message}
+                </span>
               </div>
-            </>
-          )}
+            ))}
+          </div>
+
+          <div className="logs-status">
+            <span>{filteredLogs.length} of {logs.length} entries</span>
+            {tab === "latest" && watching && (
+              <span className="logs-status-live">
+                <span className="logs-live-dot" />
+                Live
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
