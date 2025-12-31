@@ -2611,6 +2611,7 @@ a {
   right: 10px;
   width: 28px;
   height: 28px;
+  border: 1px solid var(--border-subtle);
 }
 
 .json-copy-btn.copied {
