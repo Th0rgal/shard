@@ -7,32 +7,52 @@ globs: **/*
 
 ## Project Structure
 
-- `/src/` - Core Rust library (profile management, store, mod APIs, launching)
-- `/ui/` - Tauri 2 desktop app (React + TypeScript + custom CSS)
-- `/ui/src-tauri/` - Tauri Rust backend (commands bridge to core library)
+- `/launcher/` - Core Rust library + CLI (profile management, store, mod APIs, launching)
+- `/desktop/` - Tauri 2 desktop app (React + TypeScript + custom CSS)
+- `/desktop/src-tauri/` - Tauri Rust backend (commands bridge to core library)
+- `/web/` - Next.js website + Nextra documentation
 
 ## Key Modules
 
-### Rust (Core Library)
+### Rust (Core Library - launcher/src/)
 - `profile.rs` - Profile management
 - `template.rs` - Profile templates (Fabric, Forge, etc.)
-- `store.rs`, `content_store.rs`, `library.rs` - Content-addressed storage
+- `store.rs`, `content_store.rs` - Content-addressed storage
+- `library.rs` - Global library, enrichment from profiles, unused content detection
 - `modrinth.rs`, `curseforge.rs` - Mod platform APIs
-- `minecraft.rs` - Version/library/asset downloads
+- `minecraft.rs` - Version/library/asset downloads, loader version fetching (Fabric, Forge, Quilt, NeoForge)
 - `ops.rs` - Launch operations
 - `auth.rs`, `accounts.rs` - Microsoft authentication
 - `skin.rs` - Skin management
 - `java.rs` - Java runtime detection
 
-### UI Components
+### UI Components (desktop/src/components/)
 - `Sidebar.tsx` - Navigation, profile selector with drag-and-drop folders
 - `ProfileView.tsx` - Profile details, content management, launch
-- `StoreView.tsx` - Modrinth/CurseForge mod browser
-- `LibraryView.tsx` - Global content library
-- `AccountView.tsx` - Account details, skin management
+- `StoreView.tsx` - Modrinth/CurseForge mod browser with quick-install
+- `LibraryView.tsx` - Global content library with collapsible search and sticky details panel
+- `AccountView.tsx` - Account details, skin management, skin URL import, cape preview
+- `AccountsView.tsx` - Account list and switching
+- `SettingsView.tsx` - Application settings with storage cleanup section
 - `LogsView.tsx` - Live game log viewer
-- `SkinViewer.tsx` - 3D skin renderer
+- `SkinViewer.tsx` - 3D skin and cape renderer
+- `SkinThumbnail.tsx` - Compact skin preview thumbnail
+- `ContentItemRow.tsx` - Compact content item display with platform links
 - `PlatformIcon.tsx` - Platform icons (Modrinth/CurseForge/Local)
+- `Modal.tsx` - Base modal with close button
+- `modals/PurgeStorageModal.tsx` - Unused content detection and cleanup
+- `modals/ProfileJsonModal.tsx` - Profile JSON viewer with syntax highlighting
+
+### Website (web/)
+- `app/page.tsx` - Homepage with launcher preview and rotating taglines
+- `app/layout.tsx` - Root layout with theme provider, JSON-LD, analytics
+- `app/sitemap.ts` - Dynamic sitemap for SEO
+- `app/opengraph-image.tsx`, `app/twitter-image.tsx` - Dynamic social images
+- `app/docs/[[...mdxPath]]/page.tsx` - Nextra documentation routing
+- `content/` - MDX documentation files
+- `components/launcher-hero/` - Interactive launcher preview
+- `components/JsonLd.tsx` - Structured data for SEO
+- `components/GoogleAnalytics.tsx` - Analytics integration
 
 ## Build Profiles (IMPORTANT)
 
@@ -51,26 +71,26 @@ Development prioritizes fast compilation over optimization. Use the appropriate 
 
 ```bash
 # Development (use this for iteration)
-cd ui && cargo tauri dev
+cd desktop && cargo tauri dev
 
 # Frontend only (no Tauri)
-cd ui && bun run dev
+cd desktop && bun run dev
 
 # Core library check
-cargo check
+cd launcher && cargo check
 
 # Test build (faster than release)
-cd ui && cargo tauri build --profile dev-release
+cd desktop && cargo tauri build --profile dev-release
 
 # Production build (slow, only when needed)
-cd ui && cargo tauri build --release
+cd desktop && cargo tauri build --release
 ```
 
 ## Code Style
 
 - Rust: Follow standard Rust conventions, use `anyhow` for errors
 - TypeScript: Functional React components, TypeScript strict mode
-- CSS: Custom CSS in `styles.css` with CSS variables (not Tailwind)
+- CSS: Custom CSS in `desktop/src/styles.css` with CSS variables (not Tailwind)
 
 ## Ignore Directories
 
@@ -85,7 +105,7 @@ Never read or modify files in:
 The UI uses macOS-inspired glassmorphism:
 - Warm dark palette defined in CSS `:root` variables
 - Glassmorphism with `backdrop-filter: blur()` on elevated surfaces
-- Accent colors: `--accent-primary` (cyan), `--accent-secondary` (amber)
+- Accent colors: `--accent-primary` (warm amber #e8a855)
 - Border-radius scale: 4px (tiny), 6px (small), 8px (medium), 10px (standard), 12px (large)
 - Text colors: `--text-primary`, `--text-secondary`, `--text-muted`
 - Geist Sans/Mono fonts

@@ -37,9 +37,9 @@ Shard is a minimal, clean, CLI-first Minecraft launcher focused on stability, re
 - `launcher/src/template.rs`: profile templates for quick setup.
 - `launcher/src/store.rs`: content-addressed store operations.
 - `launcher/src/content_store.rs`: unified content store abstraction.
-- `launcher/src/library.rs`: global library/content management.
+- `launcher/src/library.rs`: global library/content management, enrichment from profiles, unused content detection.
 - `launcher/src/instance.rs`: instance materialization from profiles.
-- `launcher/src/minecraft.rs`: version/library/asset downloads.
+- `launcher/src/minecraft.rs`: version/library/asset downloads, loader version fetching (Fabric, Forge, Quilt, NeoForge).
 - `launcher/src/modrinth.rs`: Modrinth API client for mod search/install.
 - `launcher/src/curseforge.rs`: CurseForge API client for mod search/install.
 - `launcher/src/ops.rs`: higher-level operations (download, install, launch).
@@ -60,22 +60,34 @@ Shard is a minimal, clean, CLI-first Minecraft launcher focused on stability, re
 - `desktop/src/components/Sidebar.tsx`: navigation sidebar with profile selector, drag-and-drop folders.
 - `desktop/src/components/ProfileView.tsx`: profile details, content management, launch controls.
 - `desktop/src/components/StoreView.tsx`: Modrinth/CurseForge mod browser with search and install.
-- `desktop/src/components/LibraryView.tsx`: global content library browser.
-- `desktop/src/components/AccountView.tsx`: account details and skin management.
+- `desktop/src/components/LibraryView.tsx`: global content library browser with collapsible search and sticky details panel.
+- `desktop/src/components/AccountView.tsx`: account details, skin management, skin URL import, cape preview.
 - `desktop/src/components/AccountsView.tsx`: account list and switching.
 - `desktop/src/components/LogsView.tsx`: live game log viewer.
-- `desktop/src/components/SettingsView.tsx`: application settings.
-- `desktop/src/components/SkinViewer.tsx`: 3D Minecraft skin renderer.
+- `desktop/src/components/SettingsView.tsx`: application settings with storage cleanup section.
+- `desktop/src/components/SkinViewer.tsx`: 3D Minecraft skin and cape renderer.
+- `desktop/src/components/SkinThumbnail.tsx`: compact skin preview thumbnail component.
+- `desktop/src/components/ContentItemRow.tsx`: compact content item display with platform links.
 - `desktop/src/components/PlatformIcon.tsx`: Modrinth/CurseForge/Local platform icons.
+- `desktop/src/components/Modal.tsx`: base modal component with close button.
 - `desktop/src/components/modals/`: modal dialogs for various actions.
+- `desktop/src/components/modals/PurgeStorageModal.tsx`: unused content detection and cleanup.
+- `desktop/src/components/modals/ProfileJsonModal.tsx`: profile JSON viewer with syntax highlighting and copy button.
 
 ## Code map (Web - web/)
-- `web/app/page.tsx`: homepage with launcher preview hero.
-- `web/app/layout.tsx`: root layout with theme provider.
+- `web/app/page.tsx`: homepage with launcher preview hero and rotating taglines.
+- `web/app/layout.tsx`: root layout with theme provider, JSON-LD, and analytics.
+- `web/app/sitemap.ts`: dynamic sitemap generation for SEO.
+- `web/app/opengraph-image.tsx`: dynamic Open Graph image generation.
+- `web/app/twitter-image.tsx`: dynamic Twitter card image generation.
 - `web/app/docs/[[...mdxPath]]/page.tsx`: Nextra documentation routing.
 - `web/content/`: MDX documentation files.
 - `web/components/launcher-hero/`: Interactive launcher preview component.
 - `web/components/theme-provider.tsx`: Next-themes provider.
+- `web/components/JsonLd.tsx`: JSON-LD structured data for SEO.
+- `web/components/GoogleAnalytics.tsx`: Google Analytics integration.
+- `web/public/robots.txt`: crawler directives.
+- `web/public/fonts/`: Geist font files.
 
 ## Launch flow
 1. Read profile manifest.

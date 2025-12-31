@@ -22,42 +22,64 @@ Shard is a minimal, clean, CLI-first Minecraft launcher focused on stability, re
 - **Minecraft data** (`minecraft/`): versions, libraries, assets, natives.
 - **Accounts** (`accounts.json`): multiple Microsoft accounts with refresh + access tokens.
 
-## Code map (Rust)
-- `src/lib.rs`: core library entry point, re-exports all modules.
-- `src/main.rs`: CLI entry point with subcommands.
-- `src/profile.rs`: profile management and serialization.
-- `src/template.rs`: profile templates for quick setup.
-- `src/store.rs`: content-addressed store operations.
-- `src/content_store.rs`: unified content store abstraction.
-- `src/library.rs`: global library/content management.
-- `src/instance.rs`: instance materialization from profiles.
-- `src/minecraft.rs`: version/library/asset downloads.
-- `src/modrinth.rs`: Modrinth API client for mod search/install.
-- `src/curseforge.rs`: CurseForge API client for mod search/install.
-- `src/ops.rs`: higher-level operations (download, install, launch).
-- `src/auth.rs`: Microsoft OAuth device code flow.
-- `src/accounts.rs`: account storage + selection.
-- `src/skin.rs`: Minecraft skin fetching and upload.
-- `src/java.rs`: Java runtime detection and management.
-- `src/config.rs`: global configuration handling.
-- `src/paths.rs`: data path helpers.
-- `src/logs.rs`: logging infrastructure.
-- `src/updates.rs`: update checking functionality.
-- `src/util.rs`: shared helpers.
+## Code map (Rust - launcher/)
+- `launcher/src/lib.rs`: core library entry point, re-exports all modules.
+- `launcher/src/main.rs`: CLI entry point with subcommands.
+- `launcher/src/profile.rs`: profile management and serialization.
+- `launcher/src/template.rs`: profile templates for quick setup.
+- `launcher/src/store.rs`: content-addressed store operations.
+- `launcher/src/content_store.rs`: unified content store abstraction.
+- `launcher/src/library.rs`: global library/content management, enrichment from profiles, unused content detection.
+- `launcher/src/instance.rs`: instance materialization from profiles.
+- `launcher/src/minecraft.rs`: version/library/asset downloads, loader version fetching (Fabric, Forge, Quilt, NeoForge).
+- `launcher/src/modrinth.rs`: Modrinth API client for mod search/install.
+- `launcher/src/curseforge.rs`: CurseForge API client for mod search/install.
+- `launcher/src/ops.rs`: higher-level operations (download, install, launch).
+- `launcher/src/auth.rs`: Microsoft OAuth device code flow.
+- `launcher/src/accounts.rs`: account storage + selection.
+- `launcher/src/skin.rs`: Minecraft skin fetching and upload.
+- `launcher/src/java.rs`: Java runtime detection and management.
+- `launcher/src/config.rs`: global configuration handling.
+- `launcher/src/paths.rs`: data path helpers.
+- `launcher/src/logs.rs`: logging infrastructure.
+- `launcher/src/updates.rs`: update checking functionality.
+- `launcher/src/util.rs`: shared helpers.
 
-## Code map (UI)
-- `ui/src/App.tsx`: main application component, routing, modal management.
-- `ui/src/store.ts`: Zustand state management.
-- `ui/src/styles.css`: design tokens, theme variables, component styles.
-- `ui/src/components/Sidebar.tsx`: navigation sidebar with profile selector, drag-and-drop folders.
-- `ui/src/components/ProfileView.tsx`: profile details, content management, launch controls.
-- `ui/src/components/StoreView.tsx`: Modrinth/CurseForge mod browser with search and install.
-- `ui/src/components/LibraryView.tsx`: global content library browser.
-- `ui/src/components/AccountView.tsx`: account details and skin management.
-- `ui/src/components/LogsView.tsx`: live game log viewer.
-- `ui/src/components/SkinViewer.tsx`: 3D Minecraft skin renderer.
-- `ui/src/components/PlatformIcon.tsx`: Modrinth/CurseForge/Local platform icons.
-- `ui/src/components/modals/`: modal dialogs for various actions.
+## Code map (Desktop - desktop/)
+- `desktop/src/App.tsx`: main application component, routing, modal management.
+- `desktop/src/store/index.ts`: Zustand state management.
+- `desktop/src/styles.css`: design tokens, theme variables, component styles.
+- `desktop/src/components/Sidebar.tsx`: navigation sidebar with profile selector, drag-and-drop folders.
+- `desktop/src/components/ProfileView.tsx`: profile details, content management, launch controls.
+- `desktop/src/components/StoreView.tsx`: Modrinth/CurseForge mod browser with search and install.
+- `desktop/src/components/LibraryView.tsx`: global content library browser with collapsible search and sticky details panel.
+- `desktop/src/components/AccountView.tsx`: account details, skin management, skin URL import, cape preview.
+- `desktop/src/components/AccountsView.tsx`: account list and switching.
+- `desktop/src/components/LogsView.tsx`: live game log viewer.
+- `desktop/src/components/SettingsView.tsx`: application settings with storage cleanup section.
+- `desktop/src/components/SkinViewer.tsx`: 3D Minecraft skin and cape renderer.
+- `desktop/src/components/SkinThumbnail.tsx`: compact skin preview thumbnail component.
+- `desktop/src/components/ContentItemRow.tsx`: compact content item display with platform links.
+- `desktop/src/components/PlatformIcon.tsx`: Modrinth/CurseForge/Local platform icons.
+- `desktop/src/components/Modal.tsx`: base modal component with close button.
+- `desktop/src/components/modals/`: modal dialogs for various actions.
+- `desktop/src/components/modals/PurgeStorageModal.tsx`: unused content detection and cleanup.
+- `desktop/src/components/modals/ProfileJsonModal.tsx`: profile JSON viewer with syntax highlighting and copy button.
+
+## Code map (Web - web/)
+- `web/app/page.tsx`: homepage with launcher preview hero and rotating taglines.
+- `web/app/layout.tsx`: root layout with theme provider, JSON-LD, and analytics.
+- `web/app/sitemap.ts`: dynamic sitemap generation for SEO.
+- `web/app/opengraph-image.tsx`: dynamic Open Graph image generation.
+- `web/app/twitter-image.tsx`: dynamic Twitter card image generation.
+- `web/app/docs/[[...mdxPath]]/page.tsx`: Nextra documentation routing.
+- `web/content/`: MDX documentation files.
+- `web/components/launcher-hero/`: Interactive launcher preview component.
+- `web/components/theme-provider.tsx`: Next-themes provider.
+- `web/components/JsonLd.tsx`: JSON-LD structured data for SEO.
+- `web/components/GoogleAnalytics.tsx`: Google Analytics integration.
+- `web/public/robots.txt`: crawler directives.
+- `web/public/fonts/`: Geist font files.
 
 ## Data layout
 ```
@@ -89,7 +111,7 @@ Shard is a minimal, clean, CLI-first Minecraft launcher focused on stability, re
 
 ## Environment
 - **Config location**: `~/.shard/`.
-- **UI dev server**: `http://localhost:1420`.
+- **Desktop dev server**: `http://localhost:1420`.
 
 ## Build Profiles
 
@@ -100,6 +122,8 @@ Shard is a minimal, clean, CLI-first Minecraft launcher focused on stability, re
 | `release` | `cargo tauri build --release` | Production only (~3-5min) |
 
 ## UI Design
-- Design tokens in `ui/src/styles.css` (warm dark palette, Geist fonts).
+- Design tokens in `desktop/src/styles.css` (warm dark palette, Geist fonts).
 - Custom CSS with CSS variables, not Tailwind.
+- Glassmorphism with `backdrop-filter: blur()` on elevated surfaces.
+- Accent colors: `--accent-primary` (warm amber #e8a855).
 - Border-radius scale: 4px (tiny), 6px (small), 8px (medium), 10px (standard), 12px (large).

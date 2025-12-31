@@ -103,6 +103,7 @@ export default function RootLayout({
         />
       </Head>
       <body className="min-h-dvh bg-mesh-subtle">
+        <GoogleAnalytics />
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

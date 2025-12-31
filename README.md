@@ -5,15 +5,21 @@
 <h1 align="center">Shard</h1>
 
 <p align="center">
-  <strong>A minimal, content-addressed Minecraft launcher</strong><br>
-  <em>CLI-first. Reproducible. Zero duplication.</em>
+  <strong>Reproducible profiles. One deduplicated library. Scriptable workflows.</strong><br>
+  <em>Open source. Built in Rust with Tauri.</em>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> •
+  <a href="https://github.com/Th0rgal/shard/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <a href="https://github.com/Th0rgal/shard"><img src="https://img.shields.io/badge/built%20with-Rust%20%2B%20Tauri-orange.svg" alt="Built with Rust + Tauri"></a>
+  <a href="https://github.com/Th0rgal/shard/releases"><img src="https://img.shields.io/github/v/release/Th0rgal/shard?include_prereleases" alt="Release"></a>
+</p>
+
+<p align="center">
+  <a href="#what-is-shard">What is Shard?</a> •
+  <a href="#why-shard">Why Shard?</a> •
   <a href="#installation">Installation</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#philosophy">Philosophy</a> •
   <a href="#commands">Commands</a>
 </p>
 
@@ -21,31 +27,41 @@
 
 ## What is Shard?
 
-Shard is a Minecraft launcher that treats your game setup like code: **declarative**, **reproducible**, and **efficient**. Instead of copying mod files everywhere, Shard stores content once and references it by hash — like Git for your Minecraft mods.
+Shard is an open-source Minecraft launcher with a global deduplicated library and declarative profiles (plain JSON). It materializes clean instances from a single source of truth, integrates with Modrinth and CurseForge, and supports scriptable workflows via a CLI while providing a polished desktop experience.
 
-- **One mod file, infinite profiles** — mods are stored once, shared across all profiles
-- **Profiles are just JSON** — version control your setups, share them, diff them
-- **Works offline** — no launcher account required, no telemetry, your data stays local
-- **Modrinth & CurseForge** — search, browse, and install from both platforms
-- **Fabric & Forge** — loader support with automatic version resolution
+**Define profiles in plain JSON, install content from Modrinth/CurseForge, and launch clean instances without duplicating the same mods across every pack.**
 
-## Features
+## Why Shard?
 
-| Feature | Description |
-|---------|-------------|
-| **Content-Addressed Store** | Mods, resourcepacks, and shaderpacks stored by SHA-256 hash. No duplicates, ever. |
-| **Declarative Profiles** | JSON manifests that define exactly what goes into each instance. |
-| **Multi-Account** | Multiple Microsoft accounts with secure token storage. |
-| **Mod Platforms** | Native Modrinth and CurseForge integration for search and install. |
-| **Templates** | Create profiles from reusable templates (Fabric, Forge, vanilla). |
-| **Desktop UI** | Clean Tauri-based GUI for those who prefer clicking over typing. |
+### Performance & Polish
+
+- **Fast, lightweight desktop app**: Built in Rust with Tauri for minimal resource usage
+- **No hidden state**: Plain JSON on disk, predictable directory layout, fully inspectable
+- **Global deduplication**: Mods stored once by SHA-256 hash, shared across all profiles
+
+### Transparency & Trust
+
+- **Open source**: Inspect every line of code, contribute, or fork
+- **No telemetry**: Your data stays local, no launcher account required
+- **Works offline**: Launch games without an internet connection (after initial setup)
+
+### Features
+
+| Feature | What it means for you |
+|---------|----------------------|
+| **Content-Addressed Store** | Install the same mod in 10 profiles, it's stored once. No wasted disk space. |
+| **Declarative Profiles** | Your setup is a JSON file. Version control it, share it, restore it anytime. |
+| **Multi-Account** | Switch between Microsoft accounts instantly with secure token storage. |
+| **Modrinth + CurseForge** | Search and install from both platforms without leaving the app. |
+| **Fabric, Forge, Quilt, NeoForge** | All major mod loaders with automatic version resolution. |
+| **CLI + Desktop** | A polished desktop UI for everyday play, backed by a serious CLI for scripting. |
 
 ## Installation
 
 ### Prerequisites
 
-- **Rust** (1.75+) — Install via [rustup.rs](https://rustup.rs)
-- **Bun** (or Node.js 18+) — For the desktop UI frontend
+- **Rust** (1.75+): Install via [rustup.rs](https://rustup.rs)
+- **Bun** (or Node.js 18+): For the desktop UI frontend
 - **Platform tools:**
   - macOS: Xcode Command Line Tools (`xcode-select --install`)
   - Linux: `build-essential`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`
@@ -143,19 +159,17 @@ shard mod add my-profile sodium
 shard launch my-profile
 ```
 
-## Philosophy
+## Architecture
 
-Shard is built on five principles:
+Shard treats your game setup like code: **declarative**, **reproducible**, and **efficient**.
 
-1. **Single source of truth** — Profiles are declarative manifests. Instances are derived artifacts that can be regenerated anytime.
-
-2. **Deduplication first** — Content lives in a SHA-256 addressed store. Install the same mod in 10 profiles? It's stored once.
-
-3. **Stable and boring** — Plain JSON on disk. Predictable directory layout. No hidden state or magic sync.
-
-4. **Replaceable parts** — Authentication, Minecraft data, and profiles are isolated modules. Swap or extend without breaking everything.
-
-5. **CLI-first** — Every feature works from the command line. Script it, automate it, pipe it.
+| Principle | Implementation |
+|-----------|----------------|
+| **Single source of truth** | Profiles are JSON manifests. Instances are derived artifacts, regenerated on demand. |
+| **Deduplication** | SHA-256 content-addressed store. One file, infinite profiles. |
+| **No magic** | Plain JSON on disk. Predictable layout. Fully inspectable state. |
+| **Modular** | Auth, Minecraft data, and profiles are isolated. Swap or extend without breaking everything. |
+| **CLI-first** | Every feature works from the command line. Script it, automate it, pipe it. |
 
 ## Commands
 
