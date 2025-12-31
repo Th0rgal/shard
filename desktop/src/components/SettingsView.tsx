@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { revealItemInDir, openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../store";
-import type { StorageStats, UpdateCheckResult, ContentUpdate, JavaInstallation } from "../types";
+import type { StorageStats, UpdateCheckResult, ContentUpdate, JavaInstallation, PurgeResult } from "../types";
 import { formatFileSize } from "../utils";
+import { PurgeStorageModal } from "./modals/PurgeStorageModal";
 
 type StorageCategory = {
   key: string;
@@ -27,6 +28,9 @@ export function SettingsView() {
   // Java settings state
   const [javaInstallations, setJavaInstallations] = useState<JavaInstallation[]>([]);
   const [detectingJava, setDetectingJava] = useState(false);
+
+  // Purge modal state
+  const [purgeModalOpen, setPurgeModalOpen] = useState(false);
 
   const loadStats = useCallback(async () => {
     try {
@@ -153,6 +157,17 @@ export function SettingsView() {
     }
   };
 
+  const handlePurgeCompleted = (result: PurgeResult) => {
+    if (result.deleted_count > 0) {
+      notify(
+        "Storage cleaned",
+        `Deleted ${result.deleted_count} item${result.deleted_count !== 1 ? "s" : ""}, freed ${formatFileSize(result.freed_bytes)}`
+      );
+      // Refresh storage stats
+      loadStats();
+    }
+  };
+
   if (loading) {
     return (
       <div className="view-transition" style={{ padding: 20 }}>
@@ -213,21 +228,31 @@ export function SettingsView() {
     },
   ];
 
+  const activeItem = sections.find((s) => s.id === activeSection);
+
   return (
     <div className="view-transition settings-layout">
-      {/* Settings Navigation */}
-      <nav className="settings-nav">
-        {sections.map((section) => (
-          <button
-            key={section.id}
-            className={`settings-nav-item ${activeSection === section.id ? "active" : ""}`}
-            onClick={() => setActiveSection(section.id)}
-          >
-            {section.icon}
-            <span>{section.label}</span>
-          </button>
-        ))}
-      </nav>
+      {/* Settings Dropdown Selector */}
+      <div className="settings-selector">
+        <select
+          className="settings-select"
+          value={activeSection}
+          onChange={(e) => setActiveSection(e.target.value as SettingsSection)}
+        >
+          {sections.map((section) => (
+            <option key={section.id} value={section.id}>
+              {section.label}
+            </option>
+          ))}
+        </select>
+        <div className="settings-select-display">
+          {activeItem?.icon}
+          <span>{activeItem?.label}</span>
+          <svg className="settings-select-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      </div>
 
       {/* Settings Content */}
       <div className="settings-content">
@@ -352,6 +377,25 @@ export function SettingsView() {
               </div>
             </section>
 
+            <section className="settings-card" style={{ marginBottom: 24 }}>
+              <div className="settings-card-header">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ opacity: 0.6 }}>
+                  <path d="M4 6h12M6 6V5a1 1 0 011-1h6a1 1 0 011 1v1M15 6v10a1 1 0 01-1 1H6a1 1 0 01-1-1V6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span>Cleanup</span>
+              </div>
+
+              <div className="settings-row">
+                <div className="settings-row-content">
+                  <div className="settings-row-title">Clean unused content</div>
+                  <div className="settings-row-description">Remove items from the library that are not used by any profile</div>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={() => setPurgeModalOpen(true)}>
+                  Clean
+                </button>
+              </div>
+            </section>
+
             <section className="settings-card settings-card-muted">
               <div className="settings-card-header">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ opacity: 0.6 }}>
@@ -359,9 +403,17 @@ export function SettingsView() {
                   <path d="M10 10l5-5M11 5h4v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 <span>Deduplication</span>
+                {stats.deduplication_savings > 0 && (
+                  <span className="settings-card-badge" style={{ marginLeft: "auto", background: "rgba(52, 211, 153, 0.15)", color: "#34d399" }}>
+                    {formatFileSize(stats.deduplication_savings)} saved
+                  </span>
+                )}
               </div>
               <p className="settings-tip">
-                Shard uses content-addressed storage with SHA-256 hashing. When the same mod is used across multiple profiles, it's stored only once, saving disk space.
+                Shard uses content-addressed storage with SHA-256 hashing. When the same mod is used across multiple profiles, it's stored only once.
+                {stats.deduplication_savings > 0 && stats.total_references > stats.unique_items && (
+                  <> You have {stats.total_references} references to {stats.unique_items} unique files, saving <strong style={{ color: "#34d399" }}>{formatFileSize(stats.deduplication_savings)}</strong> of disk space.</>
+                )}
               </p>
             </section>
           </>
@@ -534,17 +586,7 @@ export function SettingsView() {
 
               <div className="about-info">
                 <div className="about-logo">
-                  <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                    <rect width="48" height="48" rx="12" fill="url(#about-gradient)" />
-                    <path d="M14 22l10-6 10 6v8l-10 6-10-6v-8z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" />
-                    <path d="M24 28V16M24 28l10-6M24 28l-10-6" stroke="white" strokeWidth="2.5" strokeLinejoin="round" />
-                    <defs>
-                      <linearGradient id="about-gradient" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#f0bc6f" />
-                        <stop offset="1" stopColor="#e8a855" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
+                  <img src="/icon.png" alt="Shard" width="64" height="64" style={{ borderRadius: 12 }} />
                 </div>
                 <div className="about-details">
                   <div className="about-name">Shard</div>
@@ -590,6 +632,13 @@ export function SettingsView() {
           </>
         )}
       </div>
+
+      {/* Purge Storage Modal */}
+      <PurgeStorageModal
+        open={purgeModalOpen}
+        onClose={() => setPurgeModalOpen(false)}
+        onPurged={handlePurgeCompleted}
+      />
     </div>
   );
 }
