@@ -1014,15 +1014,19 @@ impl Library {
     // ========== Purge Unused Items ==========
 
     /// Get all unused items (items not referenced by any profile)
+    /// Note: Skins are excluded from unused detection since they may be in use by accounts
+    /// and are not tracked via profile_items like mods/resourcepacks/shaderpacks.
     pub fn get_unused_items(&self) -> Result<UnusedItemsSummary> {
         let mut summary = UnusedItemsSummary::default();
 
         // Query items that have no entries in profile_items
+        // Exclude skins since they may be actively used by accounts
         let mut stmt = self.conn.prepare(
             r#"
             SELECT id, hash, content_type, name, file_size
             FROM library_items
             WHERE id NOT IN (SELECT DISTINCT item_id FROM profile_items)
+              AND content_type != 'skin'
             ORDER BY content_type, name
             "#,
         )?;

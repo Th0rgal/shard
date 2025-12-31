@@ -1132,14 +1132,31 @@ struct NeoForgeVersionsResponse {
     versions: Vec<String>,
 }
 
+/// Extract the minor.patch portion from a Minecraft version string.
+/// NeoForge versions are based on the MC version without the leading "1." prefix.
+/// For example: "1.20.1" -> "20.1", "1.21" -> "21", "2.0" -> "2.0" (future-proof)
+fn extract_neoforge_version_filter(mc_version: &str) -> String {
+    // Split by '.' and skip the first component (usually "1")
+    let parts: Vec<&str> = mc_version.split('.').collect();
+    if parts.len() >= 2 {
+        // For versions like "1.20.1" -> "20.1", "1.21" -> "21"
+        // For potential future "2.0" -> "0" (just the second part onwards)
+        parts[1..].join(".")
+    } else {
+        // Fallback: return as-is if format is unexpected
+        mc_version.to_string()
+    }
+}
+
 #[tauri::command]
 pub fn fetch_neoforge_versions_cmd(mc_version: Option<String>) -> Result<Vec<String>, String> {
     let client = reqwest::blocking::Client::new();
 
     // NeoForge API returns versions for a specific MC version
-    // For MC 1.20.1+, use the NeoForge API
-    let url = if let Some(mc) = mc_version {
-        format!("https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge?filter={}.", mc.replacen("1.", "", 1))
+    // NeoForge versions omit the leading "1." from MC versions (e.g., 1.20.1 -> 20.1)
+    let url = if let Some(ref mc) = mc_version {
+        let filter = extract_neoforge_version_filter(mc);
+        format!("https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge?filter={}.", filter)
     } else {
         "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge".to_string()
     };
@@ -1188,7 +1205,7 @@ pub fn fetch_forge_versions_cmd(mc_version: Option<String>) -> Result<Vec<String
         .map_err(|e| format!("Failed to parse Forge promotions: {}", e))?;
 
     // Filter versions based on MC version if provided
-    let versions: Vec<String> = if let Some(mc) = mc_version {
+    let mut versions: Vec<String> = if let Some(mc) = mc_version {
         // Look for versions matching this MC version exactly
         // Key format: "1.20.1-recommended" or "1.20.1-latest"
         let prefix = format!("{}-", mc);
@@ -1216,6 +1233,8 @@ pub fn fetch_forge_versions_cmd(mc_version: Option<String>) -> Result<Vec<String
             .collect()
     };
 
+    // Sort versions in descending order (newest first)
+    versions.sort_by(|a, b| b.cmp(a));
     Ok(versions)
 }
 
@@ -1401,10 +1420,12 @@ pub fn library_get_stats_cmd() -> Result<LibraryStats, String> {
 pub fn library_sync_cmd() -> Result<ImportResult, String> {
     let paths = load_paths()?;
     let library = Library::from_paths(&paths).map_err(|e| e.to_string())?;
-    let result = library.sync_with_store(&paths).map_err(|e| e.to_string())?;
+    let mut result = library.sync_with_store(&paths).map_err(|e| e.to_string())?;
 
     // After syncing, enrich library items with metadata from profiles
-    let _ = enrich_library_from_profiles(&paths, &library);
+    if let Err(e) = enrich_library_from_profiles(&paths, &library) {
+        result.errors.push(format!("Warning: Failed to enrich library metadata: {}", e));
+    }
 
     Ok(result)
 }

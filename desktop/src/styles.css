@@ -1350,7 +1350,7 @@ a {
 .content-area {
   width: 100%;
   max-width: 100%;
-  padding: 0 40px;
+  padding: 40px;
   position: relative;
   flex: 1;
   display: flex;
@@ -2283,9 +2283,6 @@ a {
 
 /* Launch button - Premium liquid glass with radial highlight + shimmer */
 .btn-launch {
-  --mouse-x: 50%;
-  --mouse-y: 50%;
-
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -2312,13 +2309,13 @@ a {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-/* Radial highlight that follows cursor */
+/* Center-based radial highlight on hover (pure CSS) */
 .btn-launch::before {
   content: '';
   position: absolute;
   inset: 0;
   background: radial-gradient(
-    circle at var(--mouse-x) var(--mouse-y),
+    circle at center,
     rgba(255, 255, 255, 0.12) 0%,
     rgba(255, 255, 255, 0.03) 40%,
     transparent 70%
@@ -5173,4 +5170,29 @@ a {
   font-size: 14px;
   color: var(--accent-danger);
   margin: 0;
+}
+
+/* =============================================================================
+   REDUCED MOTION ACCESSIBILITY
+   Disable animations for users who prefer reduced motion.
+   ============================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* Keep essential transitions but make them instant */
+  .btn-launch::after,
+  .skeleton {
+    animation: none !important;
+  }
+
+  /* Disable shimmer effects completely */
+  .btn-launch::after {
+    display: none;
+  }
 }

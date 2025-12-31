@@ -245,12 +245,13 @@ function App() {
       notify("No account", "Add an account first.");
       return;
     }
-    setLaunchStatus({ stage: "queued" });
     try {
       await invoke("launch_profile_cmd", {
         profileId: selectedProfileId,
         accountId: activeAccount.uuid,
       });
+      // Only set status after successful invoke - events will update it further
+      setLaunchStatus({ stage: "queued" });
     } catch (err) {
       notify("Launch failed", String(err));
       setLaunchStatus(null);

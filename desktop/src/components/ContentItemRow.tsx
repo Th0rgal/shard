@@ -5,6 +5,26 @@ import { formatContentName, formatVersion } from "../utils";
 
 type ContentType = "mod" | "mods" | "resourcepack" | "resourcepacks" | "shaderpack" | "shaderpacks";
 
+// Platform URL templates - centralized for maintainability
+const PLATFORM_URLS = {
+  modrinth: {
+    base: "https://modrinth.com",
+    paths: {
+      mod: "mod",
+      resourcepack: "resourcepack",
+      shaderpack: "shader",
+    },
+  },
+  curseforge: {
+    base: "https://www.curseforge.com/minecraft",
+    paths: {
+      mod: "mc-mods",
+      resourcepack: "texture-packs",
+      shaderpack: "shaders",
+    },
+  },
+} as const;
+
 export interface ContentItemData {
   name: string;
   hash: string;
@@ -40,32 +60,23 @@ function getPlatformColor(platform: Platform): string {
 }
 
 function getSourceUrl(item: ContentItemData, contentType: ContentType): string | null {
-  const platform = (item.platform || item.source_platform)?.toLowerCase();
+  const platformRaw = (item.platform || item.source_platform)?.toLowerCase();
   const projectId = item.project_id || item.source_project_id;
 
-  if (!projectId || platform === "local" || platform === "store") return null;
+  if (!projectId || !platformRaw || platformRaw === "local" || platformRaw === "store") return null;
+
+  // Check if platform is supported
+  if (!(platformRaw in PLATFORM_URLS)) return null;
+  const platform = platformRaw as keyof typeof PLATFORM_URLS;
 
   // Normalize content type to singular form
-  const normalizedType = contentType.endsWith("s") ? contentType.slice(0, -1) : contentType;
+  const normalizedType = (contentType.endsWith("s") ? contentType.slice(0, -1) : contentType) as keyof typeof PLATFORM_URLS.modrinth.paths;
 
-  // Map content type to URL path segment
-  const typeMap: Record<string, { modrinth: string; curseforge: string }> = {
-    mod: { modrinth: "mod", curseforge: "mc-mods" },
-    resourcepack: { modrinth: "resourcepack", curseforge: "texture-packs" },
-    shaderpack: { modrinth: "shader", curseforge: "shaders" },
-  };
+  const platformConfig = PLATFORM_URLS[platform];
+  const path = platformConfig.paths[normalizedType];
+  if (!path) return null;
 
-  const paths = typeMap[normalizedType];
-  if (!paths) return null;
-
-  if (platform === "modrinth") {
-    return `https://modrinth.com/${paths.modrinth}/${projectId}`;
-  }
-  if (platform === "curseforge") {
-    return `https://www.curseforge.com/minecraft/${paths.curseforge}/${projectId}`;
-  }
-
-  return null;
+  return `${platformConfig.base}/${path}/${projectId}`;
 }
 
 export function ContentItemRow({
