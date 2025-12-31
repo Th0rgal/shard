@@ -115,7 +115,7 @@ export function LogsView() {
           });
         });
 
-        await invoke("start_log_watch", { profile_id: selectedProfileId });
+        await invoke("start_log_watch", { profileId: selectedProfileId });
         setWatching(true);
 
         try {
