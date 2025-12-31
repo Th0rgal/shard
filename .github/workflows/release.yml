@@ -20,8 +20,8 @@ jobs:
           - platform: macos-latest
             target: aarch64-apple-darwin
             name: macOS-arm64
-          # macOS Intel
-          - platform: macos-15-large
+          # macOS Intel (cross-compiled from ARM runner)
+          - platform: macos-latest
             target: x86_64-apple-darwin
             name: macOS-x64
           # Windows
