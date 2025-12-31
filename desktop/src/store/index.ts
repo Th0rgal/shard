@@ -15,6 +15,7 @@ import type {
   ManifestVersion,
   ProfileFolder,
   ProfileOrganization,
+  AccountInfo,
 } from "../types";
 
 const PROFILE_ORG_KEY = "shard:profile-organization";
@@ -100,6 +101,7 @@ interface AppState {
   loadConfig: () => Promise<void>;
   precacheMcVersions: () => Promise<void>;
   precacheFabricVersions: () => Promise<void>;
+  prefetchActiveAccountSkin: () => Promise<void>;
   notify: (title: string, detail?: string) => void;
   runAction: (action: () => Promise<void>) => Promise<void>;
 
@@ -400,6 +402,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ config: data });
     } catch (err) {
       get().notify("Failed to load config", String(err));
+    }
+  },
+
+  // Prefetch the active account's skin URL from Minecraft API
+  // This ensures the sidebar shows the real skin instead of cached mc-heads.net avatar
+  prefetchActiveAccountSkin: async () => {
+    const { accounts, selectedAccountId } = get();
+    if (!accounts) return;
+    const accountId = selectedAccountId ?? accounts.active ?? accounts.accounts[0]?.uuid;
+    if (!accountId) return;
+    try {
+      const info = await invoke<AccountInfo>("get_account_info_cmd", { id: accountId });
+      set({ activeAccountSkinUrl: info.skin_url });
+    } catch {
+      // Silently fail - sidebar will fall back to mc-heads.net
     }
   },
 

@@ -77,18 +77,19 @@ function App() {
   const contentKind = useAppStore((s) => s.activeTab);
 
   // Precache version data for instant dropdowns
-  const { precacheMcVersions, precacheFabricVersions } = useAppStore();
+  const { precacheMcVersions, precacheFabricVersions, prefetchActiveAccountSkin } = useAppStore();
 
   // Initial load
   useEffect(() => {
     const loadInitial = async () => {
       await Promise.all([loadProfiles(), loadAccounts(), loadConfig()]);
-      // Precache version data in background (don't await - non-blocking)
+      // Precache version data and fetch real skin URL in background (don't await - non-blocking)
       void precacheMcVersions();
       void precacheFabricVersions();
+      void prefetchActiveAccountSkin();
     };
     void loadInitial();
-  }, [loadProfiles, loadAccounts, loadConfig, precacheMcVersions, precacheFabricVersions]);
+  }, [loadProfiles, loadAccounts, loadConfig, precacheMcVersions, precacheFabricVersions, prefetchActiveAccountSkin]);
 
   // Load profile when selection changes
   useEffect(() => {
