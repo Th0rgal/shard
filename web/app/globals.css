@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+/*
+ * Shard Launcher Website
+ * Design System: Warm dark palette inspired by the desktop app
+ */
+
+:root {
+  /* Warm dark backgrounds */
+  --background: 12 11 10; /* #0c0b0a */
+  --background-elevated: 24 23 22; /* #181716 */
+  --background-tertiary: 30 29 27; /* #1e1d1b */
+
+  /* Text hierarchy - warm whites */
+  --foreground: 245 240 235;
+  --foreground-secondary: 176 168 159;
+  --foreground-tertiary: 122 116 110;
+  --foreground-muted: 90 85 80;
+
+  /* Borders - subtle, warm */
+  --border: 255 248 240 / 0.06;
+  --border-elevated: 255 248 240 / 0.1;
+
+  /* Warm amber accent - from Shard desktop */
+  --accent: 232 168 85; /* #e8a855 */
+  --accent-hover: 240 188 111; /* #f0bc6f */
+  --accent-foreground: 255 255 255;
+
+  /* Semantic colors */
+  --success: 124 207 155;
+  --warning: 244 178 127;
+  --error: 248 113 113;
+  --info: 99 102 241;
+
+  /* Ring for focus states */
+  --ring: 232 168 85 / 0.4;
+}
+
+html {
+  color-scheme: dark;
+  background: rgb(12 11 10);
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  background: rgb(var(--background));
+  color: rgb(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--foreground-muted));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--foreground-tertiary));
+}
+
+/* Glass effect */
+.glass {
+  background: rgb(var(--background-elevated) / 0.7);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.glass-subtle {
+  background: rgb(var(--background-elevated) / 0.5);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+}
+
+/* Elevation via background color */
+.surface-0 {
+  background: rgb(var(--background));
+}
+
+.surface-1 {
+  background: rgb(var(--background-elevated));
+}
+
+.surface-2 {
+  background: rgb(var(--background-tertiary));
+}
+
+/* Focus styles */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: none;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: none;
+  background-color: rgba(255, 248, 240, 0.06) !important;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: rgba(232, 168, 85, 0.5) !important;
+}
+
+/* Monospace for numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Selection */
+::selection {
+  background: rgb(var(--accent) / 0.3);
+}
+
+/* Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 150ms ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 200ms ease-out;
+}
+
+/* Background mesh gradient */
+.bg-mesh-subtle {
+  background: rgb(var(--background));
+}

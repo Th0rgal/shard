@@ -1,0 +1,140 @@
+---
+title: Building from Source
+description: How to build Shard from source
+---
+
+# Building from Source
+
+Shard is written in Rust with a React/Tauri frontend. Here's how to build it yourself.
+
+## Prerequisites
+
+### Required
+
+- **Rust** (latest stable) - [Install via rustup](https://rustup.rs)
+- **Node.js 20+** or **Bun** - For the frontend
+- **Git** - To clone the repository
+
+### macOS
+
+```bash
+# Install Xcode command line tools
+xcode-select --install
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Install Bun (recommended) or Node.js
+curl -fsSL https://bun.sh/install | bash
+```
+
+### Linux
+
+```bash
+# Install system dependencies (Ubuntu/Debian)
+sudo apt update
+sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Install Bun
+curl -fsSL https://bun.sh/install | bash
+```
+
+### Windows
+
+1. Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+2. Install [Rust](https://rustup.rs)
+3. Install [Bun](https://bun.sh) or [Node.js](https://nodejs.org)
+
+## Clone the Repository
+
+```bash
+git clone https://github.com/Th0rgal/shard.git
+cd shard
+```
+
+## Build the CLI
+
+The CLI/core library is in the `launcher/` directory:
+
+```bash
+# Development build (fast, unoptimized)
+cargo build -p shard
+
+# Release build (slow, optimized)
+cargo build -p shard --release
+
+# Run the CLI
+cargo run -p shard -- --help
+```
+
+## Build the Desktop App
+
+The desktop app is in the `desktop/` directory:
+
+```bash
+cd desktop
+
+# Install frontend dependencies
+bun install
+
+# Development mode (with hot reload)
+cargo tauri dev
+
+# Build for production
+cargo tauri build --release
+```
+
+The built app will be in `desktop/src-tauri/target/release/bundle/`.
+
+## Build Profiles
+
+| Profile | Command | Build Time | Use Case |
+|---------|---------|------------|----------|
+| `dev` | `cargo build` | ~10s | Development, debugging |
+| `dev-release` | `cargo build --profile dev-release` | ~30s | Quick testing |
+| `release` | `cargo build --release` | ~3-5min | Production builds |
+
+## Environment Variables
+
+Create a `.env` file in the repository root:
+
+```bash
+# Required for Microsoft authentication
+MICROSOFT_CLIENT_ID=your-client-id
+
+# Optional: CurseForge API key
+SHARD_CURSEFORGE_API_KEY=your-api-key
+```
+
+See `.env.example` for all available options.
+
+## Troubleshooting
+
+### Rust compilation errors
+
+Make sure you have the latest Rust:
+
+```bash
+rustup update stable
+```
+
+### Tauri build fails
+
+Ensure you have all system dependencies installed. On macOS:
+
+```bash
+xcode-select --install
+```
+
+### Frontend dependency issues
+
+Clear and reinstall:
+
+```bash
+cd desktop
+rm -rf node_modules bun.lockb
+bun install
+```

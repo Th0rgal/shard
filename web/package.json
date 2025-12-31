@@ -1,0 +1,44 @@
+{
+  "name": "shard-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shard Launcher website - landing page and documentation",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint app components lib",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed"
+  },
+  "dependencies": {
+    "@remixicon/react": "^4.7.0",
+    "@tailwindcss/postcss": "^4.1.0",
+    "clsx": "^2.1.1",
+    "motion": "^12.23.25",
+    "next": "^16.0.7",
+    "next-themes": "^0.4.6",
+    "nextra": "^4.6.1",
+    "nextra-theme-docs": "^4.6.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "^4.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@next/eslint-plugin-next": "^16.0.7",
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^24.10.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "16.0.7",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  }
+}

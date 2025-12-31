@@ -1,0 +1,97 @@
+---
+title: Content Store
+description: How Shard's content-addressed storage works
+---
+
+# Content Store
+
+The content store is Shard's deduplicated storage for mods, resource packs, and shader packs.
+
+## Location
+
+```
+~/.shard/store/
+├── mods/sha256/
+│   ├── a3f2e1d4...
+│   └── b7c8d9e0...
+├── resourcepacks/sha256/
+└── shaderpacks/sha256/
+```
+
+## How It Works
+
+1. **Hash**: When you add content, Shard computes its SHA-256 hash
+2. **Store**: The file is stored at `store/<type>/sha256/<hash>`
+3. **Reference**: Profiles reference content by hash, not by path
+
+### Example
+
+When you install Sodium:
+
+1. Shard downloads `sodium-fabric-0.6.5+mc1.21.4.jar`
+2. Computes hash: `sha256:a3f2e1d4...`
+3. Stores at `~/.shard/store/mods/sha256/a3f2e1d4...`
+4. Adds reference to your profile
+
+If another profile also uses Sodium, it references the same hash. No duplicate storage.
+
+## Benefits
+
+### Deduplication
+
+If you have 10 profiles using Sodium, the file is stored once. This can save gigabytes of disk space for modded setups.
+
+### Integrity
+
+The hash guarantees the file hasn't been corrupted. If the hash doesn't match, Shard knows something is wrong.
+
+### Safe Cleanup
+
+Shard can safely remove unreferenced content:
+
+```bash
+shard store gc
+```
+
+This scans all profiles and removes content no longer referenced by any profile.
+
+## Library
+
+The library is a higher-level view of the content store:
+
+- Browse all content you've ever downloaded
+- See which profiles use each item
+- Re-add content to new profiles without re-downloading
+
+Access the library in the desktop app via the sidebar, or use the CLI:
+
+```bash
+# List library contents
+shard library list
+
+# List mods only
+shard library list --type mods
+
+# Search library
+shard library search "sodium"
+```
+
+## Storage Stats
+
+View storage statistics:
+
+```bash
+shard store stats
+```
+
+Output:
+```
+Content Store Statistics
+========================
+Mods:          45 files (1.2 GB)
+Resource Packs: 8 files (512 MB)
+Shader Packs:   3 files (128 MB)
+Total:         56 files (1.8 GB)
+
+Deduplication savings: 2.4 GB (57%)
+```

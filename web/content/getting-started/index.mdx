@@ -1,0 +1,49 @@
+---
+title: Download & Install
+description: How to download and install Shard Launcher
+---
+
+# Download & Install
+
+## macOS
+
+1. Download the latest `.dmg` file from the [releases page](https://github.com/Th0rgal/shard/releases/latest)
+2. Open the DMG and drag Shard Launcher to your Applications folder
+3. Launch Shard from Applications
+
+> **Note**: On first launch, macOS may show a security warning. Right-click the app and select "Open" to bypass Gatekeeper.
+
+## Windows & Linux
+
+Windows and Linux builds are coming soon. In the meantime, you can [build from source](/docs/building).
+
+## Verifying Downloads
+
+Each release includes SHA-256 checksums. To verify your download:
+
+```bash
+# macOS
+shasum -a 256 Shard-Launcher-*.dmg
+
+# Compare with the checksum in CHECKSUMS.txt from the release
+```
+
+## Data Location
+
+Shard stores all data in `~/.shard/`:
+
+```
+~/.shard/
+├── store/          # Content-addressed storage (mods, packs)
+├── profiles/       # Profile manifests
+├── instances/      # Materialized game directories
+├── minecraft/      # Versions, libraries, assets
+├── accounts.json   # Account tokens
+└── config.json     # Launcher settings
+```
+
+## Next Steps
+
+- [Create your first profile](/docs/getting-started/first-profile)
+- [Add your Microsoft account](/docs/getting-started/accounts)
+- [Learn about profiles](/docs/concepts/profiles)

@@ -1,0 +1,29 @@
+[workspace]
+members = ["launcher", "desktop/src-tauri"]
+resolver = "2"
+
+# Fast builds for development/testing (default)
+# Use: cargo build (or cargo build --profile dev)
+[profile.dev]
+opt-level = 0
+debug = true
+incremental = true
+
+# Fast builds with some optimization for testing
+# Use: cargo build --profile dev-release
+[profile.dev-release]
+inherits = "release"
+opt-level = 2
+lto = false
+codegen-units = 16
+incremental = true
+debug = false
+
+# Fully optimized builds for production
+# Use: cargo build --release
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

@@ -1,0 +1,69 @@
+---
+title: Managing Accounts
+description: Add and manage Microsoft accounts in Shard
+---
+
+# Managing Accounts
+
+Shard uses Microsoft OAuth to authenticate with Minecraft. You need to add at least one account to play.
+
+## Adding an Account
+
+1. Click the **Accounts** button in the sidebar (or the account avatar)
+2. Click **Add Account**
+3. A device code will appear - copy it
+4. Click the link to open Microsoft's login page
+5. Paste the code and sign in with your Microsoft account
+6. Once authenticated, Shard will fetch your Minecraft profile
+
+## Switching Accounts
+
+If you have multiple accounts:
+
+1. Click the account avatar in the sidebar
+2. Select a different account from the list
+3. The active account is shown with a checkmark
+
+## Account Details
+
+Click on an account to view:
+
+- **Username**: Your Minecraft username
+- **UUID**: Your unique player identifier
+- **Skin**: Your current Minecraft skin
+
+You can also upload a new skin from this view.
+
+## Removing an Account
+
+1. Go to Accounts view
+2. Click the **...** menu on an account
+3. Select **Remove Account**
+
+This only removes the account from Shard; it doesn't affect your Microsoft account.
+
+## Token Storage
+
+Account tokens are stored in `~/.shard/accounts.json`. This file contains:
+
+- **Access token**: Short-lived token for API calls
+- **Refresh token**: Long-lived token to get new access tokens
+
+Tokens are refreshed automatically when needed. If you ever need to re-authenticate, remove and re-add the account.
+
+## CLI Authentication
+
+You can also add accounts via the CLI:
+
+```bash
+# Start device code flow
+shard auth login
+
+# List accounts
+shard auth list
+
+# Set active account
+shard auth use <username>
+```
+
+See the [CLI Reference](/docs/cli) for more commands.

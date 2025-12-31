@@ -1,0 +1,53 @@
+---
+description: Shard - A minimal, content-addressed Minecraft launcher
+title: Welcome to Shard
+---
+
+# Welcome to Shard
+
+Shard is a minimal, content-addressed Minecraft launcher focused on stability, reproducibility, and low duplication. It features a core library and CLI written in Rust, with an optional desktop UI built with Tauri and React.
+
+## Philosophy
+
+- **Single source of truth**: Profiles are declarative manifests; instances are derived artifacts
+- **Deduplication first**: Mods and packs live in a content-addressed store (SHA-256); profiles only reference hashes
+- **Stable + boring**: Plain JSON on disk, predictable layout, no magic state
+- **Replaceable parts**: Authentication, Minecraft data, and profile management are isolated modules
+- **CLI-first**: Everything is designed to be scripted and composed
+
+## Quick Start
+
+1. **Download** the latest release from [GitHub](https://github.com/Th0rgal/shard/releases/latest)
+2. **Open** Shard Launcher
+3. **Sign in** with your Microsoft account
+4. **Create a profile** and start playing!
+
+See the [Installation](/docs/getting-started) guide for detailed instructions.
+
+## Features
+
+### Profile Management
+
+Create and manage multiple profiles with different Minecraft versions, mod loaders, and content. Each profile is a declarative JSON manifest that can be versioned and shared.
+
+### Content-Addressed Storage
+
+Mods, resource packs, and shader packs are stored by their SHA-256 hash. If multiple profiles use the same content, it's only stored once on disk.
+
+### Mod Platform Integration
+
+Browse and install mods directly from [Modrinth](https://modrinth.com) and [CurseForge](https://curseforge.com). Shard handles version compatibility and dependencies automatically.
+
+### Multi-Account Support
+
+Add multiple Microsoft accounts and switch between them easily. Each account's tokens are stored securely.
+
+## Requirements
+
+- **macOS** (Windows and Linux coming soon)
+- **Java 17+** for Minecraft (Shard can help you install this)
+- A **Microsoft account** for Minecraft authentication
+
+## License
+
+Shard is open source software. See the [GitHub repository](https://github.com/Th0rgal/shard) for license details.

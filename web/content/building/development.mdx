@@ -1,0 +1,169 @@
+---
+title: Development Setup
+description: Setting up a development environment for Shard
+---
+
+# Development Setup
+
+This guide covers setting up a development environment for contributing to Shard.
+
+## Repository Structure
+
+```
+shard/
+├── launcher/           # Core Rust library + CLI
+│   ├── src/
+│   └── Cargo.toml
+├── desktop/            # Tauri desktop application
+│   ├── src/            # React frontend
+│   ├── src-tauri/      # Tauri Rust backend
+│   └── package.json
+├── web/                # Website + documentation
+│   ├── app/
+│   ├── content/
+│   └── package.json
+├── companion/          # Future companion mode (placeholder)
+└── Cargo.toml          # Workspace manifest
+```
+
+## Quick Start
+
+```bash
+# Clone the repo
+git clone https://github.com/Th0rgal/shard.git
+cd shard
+
+# Install frontend dependencies
+cd desktop && bun install && cd ..
+cd web && bun install && cd ..
+
+# Start desktop app in dev mode
+cd desktop && cargo tauri dev
+```
+
+## Core Library Development
+
+The core library (`launcher/`) contains all the business logic:
+
+```bash
+# Type checking
+cargo check -p shard
+
+# Run tests
+cargo test -p shard
+
+# Run the CLI
+cargo run -p shard -- --help
+
+# Run with specific command
+cargo run -p shard -- profile list
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib.rs` | Library entry point |
+| `src/main.rs` | CLI entry point |
+| `src/profile.rs` | Profile management |
+| `src/store.rs` | Content store operations |
+| `src/minecraft.rs` | Version/asset downloads |
+| `src/modrinth.rs` | Modrinth API client |
+| `src/auth.rs` | Microsoft OAuth |
+
+## Desktop App Development
+
+The desktop app uses Tauri 2 + React:
+
+```bash
+cd desktop
+
+# Start dev server with hot reload
+cargo tauri dev
+
+# Frontend only (no Tauri)
+bun run dev
+
+# Type check frontend
+bunx tsc --noEmit
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/App.tsx` | Main app component |
+| `src/store/index.ts` | Zustand state |
+| `src/components/` | UI components |
+| `src-tauri/src/lib.rs` | Tauri commands |
+
+## Website Development
+
+The website uses Next.js + Nextra:
+
+```bash
+cd web
+
+# Start dev server
+bun run dev
+
+# Build for production
+bun run build
+```
+
+## Testing
+
+### Rust Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run specific test
+cargo test profile::tests::test_create
+
+# Run with output
+cargo test -- --nocapture
+```
+
+### Frontend Tests
+
+```bash
+cd desktop
+bun run test        # Run Playwright tests
+bun run test:ui     # Test with UI
+```
+
+## Debugging
+
+### Rust
+
+Use `RUST_LOG` for logging:
+
+```bash
+RUST_LOG=debug cargo run -p shard -- profile list
+```
+
+### Tauri DevTools
+
+In dev mode, press `Cmd+Shift+I` to open DevTools.
+
+### React DevTools
+
+Install the browser extension and use it in the Tauri WebView.
+
+## Code Style
+
+- **Rust**: Follow `rustfmt` defaults
+- **TypeScript**: Follow ESLint + Prettier config
+- **Commits**: Conventional commits (feat:, fix:, docs:, etc.)
+
+Format before committing:
+
+```bash
+# Rust
+cargo fmt
+
+# TypeScript
+cd desktop && bunx prettier --write src/
+```

@@ -1,0 +1,27 @@
+# FAQ
+
+Have a question that's not answered here? [Open an issue](https://github.com/Th0rgal/shard/issues) on GitHub.
+
+## What platforms are supported?
+
+Currently Shard is available for macOS. Windows and Linux support is planned for future releases.
+
+## Does it support modded Minecraft?
+
+Yes! Shard supports Fabric, Forge, and NeoForge loaders. You can browse and install mods from Modrinth and CurseForge directly within the launcher.
+
+## How does content deduplication work?
+
+When you add a mod or resource pack, Shard computes its SHA-256 hash and stores it in a content-addressed store. If another profile uses the same mod, it simply references the existing file. No copies are made.
+
+## Can I use my existing Minecraft account?
+
+Yes, Shard uses Microsoft OAuth authentication. Your existing Microsoft account works seamlessly, and you can add multiple accounts.
+
+## Is Shard open source?
+
+Yes, Shard is fully open source. The core library is written in Rust, and the desktop app uses Tauri with React. See the [GitHub repository](https://github.com/Th0rgal/shard) for the source code.
+
+## Where is my data stored?
+
+All data is stored locally in `~/.shard/`. This includes profiles, the content store, Minecraft data, and your account tokens.

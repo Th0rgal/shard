@@ -1,0 +1,66 @@
+---
+title: Your First Profile
+description: Create your first Minecraft profile in Shard
+---
+
+# Your First Profile
+
+A profile in Shard is a complete Minecraft setup: a version, optional mod loader, and your selected mods, resource packs, and shaders.
+
+## Creating a Profile
+
+1. Click the **+** button in the sidebar or use the keyboard shortcut `Cmd+N`
+2. Enter a name for your profile (e.g., "Survival World")
+3. Select a Minecraft version
+4. Optionally, choose a mod loader:
+   - **Vanilla** - No mods, just Minecraft
+   - **Fabric** - Lightweight, fast-loading mods
+   - **Forge** - Traditional mod ecosystem
+   - **NeoForge** - Modern Forge fork
+
+5. Click **Create Profile**
+
+## Adding Mods
+
+1. Select your profile from the sidebar
+2. Click the **Store** tab to browse mods
+3. Search for a mod by name (e.g., "Sodium")
+4. Click **Install** to add it to your profile
+
+Shard automatically:
+- Downloads the correct version for your Minecraft version and loader
+- Handles dependencies (e.g., Fabric API for Fabric mods)
+- Stores the mod in the content-addressed store for deduplication
+
+## Launching
+
+1. Make sure you have an account added (see [Managing Accounts](/docs/getting-started/accounts))
+2. Click the **Play** button in the profile header
+3. Shard will:
+   - Download any missing game files
+   - Materialize your instance directory
+   - Launch Minecraft with your profile's mods and settings
+
+## Profile Templates
+
+Shard includes templates for common setups:
+
+- **Fabric + Performance** - Sodium, Lithium, and other performance mods
+- **Fabric + Shaders** - Iris Shaders with Sodium
+- **Vanilla** - Clean Minecraft, no mods
+
+Use templates as a starting point and customize from there.
+
+## CLI Alternative
+
+You can also create profiles from the command line:
+
+```bash
+# Create a vanilla profile
+shard profile create "My Profile" --version 1.21.4
+
+# Create a Fabric profile
+shard profile create "Modded" --version 1.21.4 --loader fabric
+```
+
+See the [CLI Reference](/docs/cli) for more commands.

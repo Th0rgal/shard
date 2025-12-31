@@ -1,0 +1,125 @@
+---
+title: Contributing
+description: How to contribute to Shard
+---
+
+# Contributing
+
+We welcome contributions to Shard! Here's how to get started.
+
+## Ways to Contribute
+
+- **Bug reports**: Open an issue describing the bug
+- **Feature requests**: Open an issue describing the feature
+- **Code**: Submit a pull request
+- **Documentation**: Improve docs or add examples
+- **Testing**: Try Shard and report your experience
+
+## Reporting Bugs
+
+Before reporting:
+1. Search existing issues to avoid duplicates
+2. Try the latest version
+3. Gather reproduction steps
+
+Include in your report:
+- Shard version
+- Operating system
+- Steps to reproduce
+- Expected vs actual behavior
+- Logs if relevant
+
+## Pull Requests
+
+### Before You Start
+
+1. Check if an issue exists for what you want to do
+2. For large changes, open an issue first to discuss
+3. Fork the repository
+
+### Development Flow
+
+```bash
+# Fork and clone
+git clone https://github.com/YOUR-USERNAME/shard.git
+cd shard
+
+# Create a branch
+git checkout -b feat/my-feature
+
+# Make your changes
+# ...
+
+# Test
+cargo test
+cd desktop && bun run test
+
+# Commit (use conventional commits)
+git commit -m "feat: add amazing feature"
+
+# Push
+git push origin feat/my-feature
+```
+
+### PR Guidelines
+
+- **One feature per PR**: Keep PRs focused
+- **Tests**: Add tests for new functionality
+- **Docs**: Update docs if behavior changes
+- **Format**: Run `cargo fmt` and `prettier`
+- **Conventional commits**: Use `feat:`, `fix:`, `docs:`, etc.
+
+### Commit Message Format
+
+```
+type(scope): description
+
+[optional body]
+
+[optional footer]
+```
+
+Types:
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation
+- `style`: Formatting (no code change)
+- `refactor`: Code restructuring
+- `test`: Adding tests
+- `chore`: Maintenance
+
+Examples:
+```
+feat(profile): add clone command
+fix(auth): handle token refresh failure
+docs(readme): add installation section
+```
+
+## Code Review
+
+All PRs require review before merging. Reviewers will:
+
+1. Check code quality and style
+2. Verify tests pass
+3. Ensure docs are updated
+4. Test functionality if needed
+
+Be patient - maintainers are volunteers!
+
+## Development Environment
+
+See [Development Setup](/docs/building/development) for environment setup.
+
+## Getting Help
+
+- **Discord**: Join our community (link coming soon)
+- **Issues**: Open a GitHub issue
+- **Discussions**: Use GitHub Discussions for questions
+
+## Code of Conduct
+
+Be respectful and constructive. We're all here to build something great together.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the same license as the project.

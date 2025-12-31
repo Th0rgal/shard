@@ -1,0 +1,598 @@
+/*
+ * Shard Documentation Theme
+ * Overrides nextra-theme-docs to match Shard's warm design system
+ */
+
+/* ============================================
+   BASE COLORS & VARIABLES
+   ============================================ */
+
+/* Force dark mode regardless of class or browser settings */
+:root,
+html,
+html.dark,
+html.light,
+html[class~="dark"],
+html[class~="light"],
+html[data-theme="light"],
+html[data-theme="dark"] {
+  --nextra-primary-hue: 36deg !important; /* Warm amber */
+  --nextra-primary-saturation: 80% !important;
+  --nextra-bg: 12, 11, 10 !important; /* #0c0b0a */
+  color-scheme: dark !important;
+  background-color: #0c0b0a !important;
+}
+
+/* ============================================
+   LAYOUT & STRUCTURE
+   ============================================ */
+
+html,
+body,
+.nextra-nav-container,
+.nextra-sidebar-container {
+  background-color: rgb(12, 11, 10) !important;
+}
+
+nav.nextra-nav-container {
+  background: rgba(12, 11, 10, 0.8) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 248, 240, 0.06) !important;
+}
+
+.nextra-sidebar-container {
+  background: rgba(24, 23, 22, 0.5) !important;
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border-right: 1px solid rgba(255, 248, 240, 0.06) !important;
+}
+
+main.nextra-content {
+  background-color: rgb(12, 11, 10) !important;
+}
+
+.nextra-toc {
+  border-left: 1px solid rgba(255, 248, 240, 0.06) !important;
+}
+
+/* ============================================
+   TYPOGRAPHY
+   ============================================ */
+
+.nextra-content h1,
+.nextra-content h2,
+.nextra-content h3,
+.nextra-content h4 {
+  color: rgba(245, 240, 235, 0.95) !important;
+  font-weight: 600;
+}
+
+.nextra-content h1 {
+  font-size: 2rem;
+  letter-spacing: -0.025em;
+}
+
+.nextra-content h2 {
+  font-size: 1.5rem;
+  margin-top: 2.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 248, 240, 0.06) !important;
+}
+
+/* Override any bright white borders from Nextra light mode */
+h2,
+.nextra-content h2,
+article h2 {
+  border-bottom-color: rgba(255, 248, 240, 0.06) !important;
+  border-color: rgba(255, 248, 240, 0.06) !important;
+}
+
+.nextra-content h3 {
+  font-size: 1.25rem;
+  margin-top: 2rem;
+}
+
+.nextra-content p,
+.nextra-content li {
+  color: rgba(245, 240, 235, 0.7) !important;
+  line-height: 1.75;
+}
+
+.nextra-content a {
+  color: rgb(232, 168, 85) !important; /* Warm amber */
+  text-decoration: none;
+  transition: color 150ms ease;
+}
+
+.nextra-content a:hover {
+  color: rgb(240, 188, 111) !important;
+}
+
+.nextra-content strong {
+  color: rgba(245, 240, 235, 0.9) !important;
+  font-weight: 600;
+}
+
+/* ============================================
+   NAVIGATION & SIDEBAR
+   ============================================ */
+
+.nextra-sidebar-container a,
+aside a,
+[class*="sidebar"] a,
+nav a:not(.nextra-nav-container a) {
+  color: rgba(245, 240, 235, 0.6) !important;
+  border-radius: 0.25rem;
+  transition: all 150ms ease;
+}
+
+.nextra-sidebar-container a:hover,
+aside a:hover,
+[class*="sidebar"] a:hover {
+  color: rgba(245, 240, 235, 0.9) !important;
+  background-color: rgba(255, 248, 240, 0.03) !important;
+}
+
+.nextra-sidebar-container a[data-active="true"],
+.nextra-sidebar-container a.active,
+aside a[data-active="true"],
+aside a.active,
+[class*="sidebar"] a[data-active="true"],
+[class*="sidebar"] a.active,
+li.active > a,
+a[aria-current="page"] {
+  color: rgba(245, 240, 235, 0.95) !important;
+  background-color: rgba(232, 168, 85, 0.08) !important;
+  border-left: 2px solid rgb(232, 168, 85) !important;
+  margin-left: -2px;
+}
+
+.nextra-sidebar-container .nextra-menu-title,
+aside .nextra-menu-title {
+  color: rgba(245, 240, 235, 0.4) !important;
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+}
+
+/* Sidebar section separators (Getting Started, Concepts, Development) */
+aside li:not(:has(a)):not(:has(button)),
+.nextra-sidebar-container li:not(:has(a)):not(:has(button)),
+aside ul > li:only-child:not(:has(a)),
+[class*="sidebar"] li:not(:has(a)):not(:has(button)) {
+  color: rgb(232, 168, 85) !important;
+  font-size: 0.6875rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  padding: 1rem 0.75rem 0.5rem !important;
+  margin-top: 0.5rem !important;
+  opacity: 1 !important;
+}
+
+/* First separator doesn't need top margin */
+aside ul > li:first-child:not(:has(a)):not(:has(button)) {
+  margin-top: 0 !important;
+  padding-top: 0.5rem !important;
+}
+
+/* ============================================
+   CODE BLOCKS
+   ============================================ */
+
+.nextra-content code:not(pre code) {
+  background-color: rgba(255, 248, 240, 0.06) !important;
+  color: rgb(244, 178, 127) !important;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
+  font-size: 0.875em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+pre {
+  background-color: rgba(24, 23, 22, 0.8) !important;
+  border: 1px solid rgba(255, 248, 240, 0.06) !important;
+  border-radius: 0.75rem !important;
+  backdrop-filter: blur(8px);
+}
+
+pre code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.nextra-code-block figcaption {
+  background-color: rgba(255, 248, 240, 0.03) !important;
+  border-bottom: 1px solid rgba(255, 248, 240, 0.06) !important;
+  color: rgba(245, 240, 235, 0.5) !important;
+  font-size: 0.75rem;
+}
+
+/* ============================================
+   CALLOUTS / ADMONITIONS
+   ============================================ */
+
+.nextra-callout {
+  border-radius: 0.75rem !important;
+  border: 1px solid rgba(255, 248, 240, 0.06) !important;
+  background-color: rgba(255, 248, 240, 0.02) !important;
+  backdrop-filter: blur(8px);
+}
+
+.nextra-callout[data-type="info"] {
+  border-color: rgba(99, 102, 241, 0.3) !important;
+  background-color: rgba(99, 102, 241, 0.05) !important;
+}
+
+.nextra-callout[data-type="warning"] {
+  border-color: rgba(244, 178, 127, 0.3) !important;
+  background-color: rgba(244, 178, 127, 0.05) !important;
+}
+
+.nextra-callout[data-type="error"] {
+  border-color: rgba(248, 113, 113, 0.3) !important;
+  background-color: rgba(248, 113, 113, 0.05) !important;
+}
+
+/* ============================================
+   TABLES
+   ============================================ */
+
+.nextra-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.5rem 0;
+}
+
+.nextra-content th {
+  background-color: rgba(255, 248, 240, 0.03) !important;
+  color: rgba(245, 240, 235, 0.7) !important;
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 248, 240, 0.08) !important;
+}
+
+.nextra-content td {
+  color: rgba(245, 240, 235, 0.7) !important;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 248, 240, 0.04) !important;
+}
+
+.nextra-content tr:hover td {
+  background-color: rgba(255, 248, 240, 0.02);
+}
+
+/* ============================================
+   LISTS
+   ============================================ */
+
+.nextra-content ul,
+.nextra-content ol {
+  padding-left: 1.5rem;
+}
+
+.nextra-content li {
+  margin: 0.5rem 0;
+}
+
+.nextra-content li::marker {
+  color: rgba(232, 168, 85, 0.6);
+}
+
+/* ============================================
+   BLOCKQUOTES
+   ============================================ */
+
+.nextra-content blockquote {
+  border-left: 3px solid rgba(232, 168, 85, 0.4) !important;
+  background-color: rgba(232, 168, 85, 0.03) !important;
+  padding: 1rem 1.5rem;
+  margin: 1.5rem 0;
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.nextra-content blockquote p {
+  color: rgba(245, 240, 235, 0.6) !important;
+  font-style: italic;
+}
+
+/* ============================================
+   SEARCH
+   ============================================ */
+
+.nextra-search input {
+  background-color: rgba(255, 248, 240, 0.04) !important;
+  border: 1px solid rgba(255, 248, 240, 0.06) !important;
+  border-radius: 0.5rem !important;
+  color: rgb(245, 240, 235) !important;
+}
+
+.nextra-search input::placeholder {
+  color: rgba(245, 240, 235, 0.3) !important;
+}
+
+.nextra-search input:focus {
+  border-color: rgba(232, 168, 85, 0.5) !important;
+  outline: none !important;
+}
+
+.nextra-search-results {
+  background-color: rgb(24, 23, 22) !important;
+  border: 1px solid rgba(255, 248, 240, 0.08) !important;
+  border-radius: 0.75rem !important;
+  backdrop-filter: blur(20px);
+}
+
+/* ============================================
+   BREADCRUMBS
+   ============================================ */
+
+.nextra-breadcrumb {
+  color: rgba(245, 240, 235, 0.4) !important;
+}
+
+.nextra-breadcrumb a {
+  color: rgba(245, 240, 235, 0.5) !important;
+}
+
+.nextra-breadcrumb a:hover {
+  color: rgba(245, 240, 235, 0.8) !important;
+}
+
+/* ============================================
+   PAGINATION
+   ============================================ */
+
+.nextra-nav-link {
+  background-color: rgba(255, 248, 240, 0.02) !important;
+  border: 1px solid rgba(255, 248, 240, 0.06) !important;
+  border-radius: 0.75rem !important;
+  padding: 1rem !important;
+  transition: all 150ms ease;
+}
+
+.nextra-nav-link:hover {
+  background-color: rgba(255, 248, 240, 0.04) !important;
+  border-color: rgba(255, 248, 240, 0.1) !important;
+}
+
+.nextra-nav-link span {
+  color: rgba(245, 240, 235, 0.5) !important;
+}
+
+.nextra-nav-link-title {
+  color: rgb(245, 240, 235) !important;
+}
+
+/* ============================================
+   THEME TOGGLE
+   ============================================ */
+
+.nextra-theme-toggle button {
+  background-color: rgba(255, 248, 240, 0.04) !important;
+  border: 1px solid rgba(255, 248, 240, 0.06) !important;
+  border-radius: 0.5rem !important;
+}
+
+.nextra-theme-toggle button:hover {
+  background-color: rgba(255, 248, 240, 0.08) !important;
+}
+
+/* ============================================
+   SCROLLBARS
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(122, 116, 110, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(176, 168, 159, 0.5);
+}
+
+/* ============================================
+   MISC OVERRIDES
+   ============================================ */
+
+.nextra-content hr {
+  border-color: rgba(255, 248, 240, 0.06) !important;
+  margin: 2rem 0;
+}
+
+::selection {
+  background: rgba(232, 168, 85, 0.3);
+}
+
+*:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(232, 168, 85, 0.4) !important;
+}
+
+footer {
+  border-top: 1px solid rgba(255, 248, 240, 0.06) !important;
+  background-color: rgba(12, 11, 10, 0.8) !important;
+}
+
+/* ============================================
+   AGGRESSIVE NEXTRA OVERRIDES
+   ============================================ */
+
+aside a,
+aside button,
+aside span,
+nav:not(.nextra-nav-container) a,
+[class*="sidebar"] a,
+[class*="menu"] a,
+[role="navigation"] a {
+  color: rgba(245, 240, 235, 0.6) !important;
+}
+
+aside a[data-active="true"],
+aside a[aria-current="page"],
+aside a[aria-selected="true"],
+aside li.active a,
+aside .active,
+[class*="sidebar"] a[data-active="true"],
+[class*="sidebar"] .active {
+  color: rgba(245, 240, 235, 0.95) !important;
+  background-color: rgba(232, 168, 85, 0.08) !important;
+  border-left: 2px solid rgb(232, 168, 85) !important;
+}
+
+aside a:hover,
+[class*="sidebar"] a:hover {
+  color: rgba(245, 240, 235, 0.9) !important;
+  background-color: rgba(255, 248, 240, 0.03) !important;
+}
+
+/* Ensure primary color is always amber */
+:root,
+html,
+html.dark,
+html[class~="dark"],
+html.light,
+html[class~="light"] {
+  --nextra-primary-hue: 36deg !important;
+  --nextra-primary-saturation: 50% !important;
+  --nextra-bg: 12, 11, 10 !important;
+}
+
+/* ============================================
+   MOBILE SIDEBAR FIXES
+   ============================================ */
+
+@media (max-width: 767px) {
+  .nextra-sidebar-container,
+  aside.nextra-sidebar-container,
+  [class*="sidebar-container"] {
+    display: none !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    z-index: 50 !important;
+    width: 280px !important;
+    max-width: 80vw !important;
+    transform: translateX(-100%) !important;
+    transition: transform 200ms ease-out !important;
+  }
+
+  .nextra-sidebar-container[data-open="true"],
+  aside[data-open="true"],
+  body.nextra-menu-active .nextra-sidebar-container,
+  body.nextra-menu-active aside.nextra-sidebar-container {
+    display: flex !important;
+    transform: translateX(0) !important;
+  }
+
+  .nextra-content,
+  main.nextra-content,
+  article {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .nextra-toc,
+  nav.nextra-toc {
+    display: none !important;
+  }
+
+  body.nextra-menu-active::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 40;
+  }
+}
+
+@media (max-width: 480px) {
+  .nextra-content h1 {
+    font-size: 1.5rem !important;
+  }
+
+  .nextra-content h2 {
+    font-size: 1.25rem !important;
+  }
+
+  .nextra-content h3 {
+    font-size: 1.1rem !important;
+  }
+
+  pre code {
+    font-size: 0.8rem !important;
+  }
+
+  .nextra-callout {
+    padding: 0.75rem !important;
+  }
+}
+
+/* ============================================
+   BRAVE / PRIVACY BROWSER FALLBACKS
+   Fix borders and separators for light mode fallback
+   ============================================ */
+
+/* Force all backgrounds dark */
+* {
+  --tw-bg-opacity: 1 !important;
+}
+
+/* Override any light mode styles from Nextra */
+[data-theme="light"],
+.light,
+html:not(.dark) {
+  --shiki-color-text: #f5f0eb !important;
+  --shiki-color-background: #0c0b0a !important;
+}
+
+/* Force all borders/separators to be subtle */
+hr,
+[class*="border"],
+h2,
+article h2,
+.nextra-content h2 {
+  border-color: rgba(255, 248, 240, 0.06) !important;
+}
+
+/* Force text colors for light mode fallback in Brave */
+article p,
+article li,
+article span,
+main p,
+main li,
+main span,
+.nextra-content p,
+.nextra-content li,
+.nextra-content span {
+  color: rgba(245, 240, 235, 0.7) !important;
+}
+
+article strong,
+main strong,
+.nextra-content strong {
+  color: rgba(245, 240, 235, 0.9) !important;
+}

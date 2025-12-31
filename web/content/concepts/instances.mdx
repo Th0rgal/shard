@@ -1,0 +1,101 @@
+---
+title: Instances
+description: How Shard materializes game directories
+---
+
+# Instances
+
+An instance is a materialized game directory, ready to launch Minecraft.
+
+## Location
+
+```
+~/.shard/instances/<profile-id>/
+├── mods/               # Symlinks to content store
+│   ├── sodium.jar → ../../store/mods/sha256/a3f2...
+│   └── lithium.jar → ../../store/mods/sha256/b7c8...
+├── resourcepacks/      # Symlinks to content store
+├── shaderpacks/        # Symlinks to content store
+├── config/             # Copied from overrides
+├── saves/              # World data (created by Minecraft)
+└── options.txt         # Minecraft settings
+```
+
+## Materialization
+
+When you launch a profile, Shard:
+
+1. **Creates** the instance directory if needed
+2. **Symlinks** enabled content from the store
+3. **Copies** override files from the profile
+4. **Preserves** existing saves and configs
+
+### Symlinks
+
+Content files are symlinked, not copied. This means:
+- Instant materialization (no file copying)
+- No additional disk space
+- Changes to the store are reflected immediately
+
+### Overrides
+
+Files in `~/.shard/profiles/<id>/overrides/` are copied into the instance. This is where you put:
+- Custom config files
+- Profile-specific settings
+- Any files not in the content store
+
+## Instance Lifecycle
+
+### Fresh Launch
+
+On first launch, Shard creates the instance from scratch.
+
+### Subsequent Launches
+
+Shard updates symlinks to match the current profile state:
+- New content is linked
+- Removed content is unlinked
+- Disabled content is unlinked
+
+### Saves and Configs
+
+World saves and configs created by Minecraft are preserved between launches. They live in the instance directory and aren't affected by profile changes.
+
+## Resetting an Instance
+
+To reset an instance to a clean state:
+
+```bash
+shard instance reset "Profile Name"
+```
+
+This removes:
+- All symlinks
+- Config files from overrides
+
+It preserves:
+- World saves (unless you specify `--include-saves`)
+
+## Instance Directory Structure
+
+```
+instances/<profile>/
+├── mods/                 # Mod JARs (symlinked)
+├── resourcepacks/        # Resource packs (symlinked)
+├── shaderpacks/          # Shader packs (symlinked)
+├── config/               # Mod configs (from Minecraft)
+├── saves/                # World saves
+├── logs/                 # Minecraft logs
+├── crash-reports/        # Crash reports
+├── screenshots/          # Screenshots
+└── options.txt           # Minecraft options
+```
+
+## Why Instances?
+
+Separating instances from profiles provides:
+
+1. **Clean slate**: Profile changes don't affect running games
+2. **Rollback**: Reset to profile state anytime
+3. **Portability**: Profiles are portable; instances are local
+4. **Inspection**: Easy to see exactly what's running

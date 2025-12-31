@@ -1,0 +1,218 @@
+---
+title: CLI Reference
+description: Complete reference for the Shard CLI
+---
+
+# CLI Reference
+
+Shard includes a full-featured CLI for scripting and automation.
+
+## Installation
+
+The CLI is included in the desktop app, or build it separately:
+
+```bash
+cargo install --path launcher
+```
+
+## Global Options
+
+```bash
+shard [OPTIONS] <COMMAND>
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+## Commands
+
+### Profile Management
+
+```bash
+# List all profiles
+shard profile list
+
+# Create a new profile
+shard profile create "Profile Name" --version 1.21.4
+shard profile create "Modded" --version 1.21.4 --loader fabric
+
+# Delete a profile
+shard profile delete "Profile Name"
+
+# Show profile details
+shard profile show "Profile Name"
+
+# Clone a profile
+shard profile clone "Source" "Destination"
+
+# Compare two profiles
+shard profile diff "Profile A" "Profile B"
+```
+
+### Content Management
+
+```bash
+# Add content to a profile
+shard mod add "Profile" sodium
+shard resourcepack add "Profile" /path/to/pack.zip
+shard shaderpack add "Profile" /path/to/shader.zip
+
+# Remove content
+shard mod remove "Profile" sodium
+
+# Enable/disable content
+shard mod enable "Profile" sodium
+shard mod disable "Profile" jei
+
+# List content in a profile
+shard mod list "Profile"
+```
+
+### Account Management
+
+```bash
+# Start device code authentication
+shard auth login
+
+# List accounts
+shard auth list
+
+# Set active account
+shard auth use <username>
+
+# Remove an account
+shard auth remove <username>
+```
+
+### Store Operations
+
+```bash
+# Search Modrinth
+shard store search sodium --platform modrinth
+
+# Search CurseForge
+shard store search jei --platform curseforge
+
+# Get project info
+shard store info modrinth:AANobbMI
+
+# List project versions
+shard store versions modrinth:AANobbMI
+```
+
+### Library Operations
+
+```bash
+# List library contents
+shard library list
+shard library list --type mods
+
+# Search library
+shard library search "sodium"
+
+# Clean unused content
+shard store gc
+```
+
+### Launch
+
+```bash
+# Launch a profile
+shard launch "Profile Name"
+
+# Launch with custom Java
+shard launch "Profile Name" --java /path/to/java
+
+# Launch with custom memory
+shard launch "Profile Name" --memory 4G
+```
+
+### Minecraft Data
+
+```bash
+# List available versions
+shard versions list
+shard versions list --snapshots
+
+# List installed versions
+shard versions installed
+
+# Detect Java installations
+shard java detect
+
+# Validate Java installation
+shard java validate /path/to/java
+```
+
+### Configuration
+
+```bash
+# Show config
+shard config show
+
+# Set config value
+shard config set default_memory 4G
+shard config set java_path /path/to/java
+```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `SHARD_HOME` | Override data directory (default: `~/.shard`) |
+| `SHARD_CURSEFORGE_API_KEY` | CurseForge API key |
+| `MICROSOFT_CLIENT_ID` | Microsoft OAuth client ID |
+| `RUST_LOG` | Logging level (error, warn, info, debug, trace) |
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Invalid arguments |
+| 3 | Profile not found |
+| 4 | Network error |
+| 5 | Authentication error |
+
+## Examples
+
+### Create a modded profile
+
+```bash
+# Create profile
+shard profile create "Modded 1.21" --version 1.21.4 --loader fabric
+
+# Add performance mods
+shard mod add "Modded 1.21" sodium lithium phosphor
+
+# Add utility mods
+shard mod add "Modded 1.21" modmenu journeymap
+
+# Launch
+shard launch "Modded 1.21"
+```
+
+### Batch operations
+
+```bash
+# Add mods to multiple profiles
+for profile in "Profile A" "Profile B" "Profile C"; do
+  shard mod add "$profile" sodium
+done
+
+# Update all mods in a profile
+shard mod update "Profile Name" --all
+```
+
+### Scripted backup
+
+```bash
+#!/bin/bash
+# Backup all profiles
+mkdir -p ~/shard-backup
+cp -r ~/.shard/profiles ~/shard-backup/
+cp ~/.shard/accounts.json ~/shard-backup/
+echo "Backup complete!"
+```

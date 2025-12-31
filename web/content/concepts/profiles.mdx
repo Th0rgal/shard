@@ -1,0 +1,118 @@
+---
+title: Profiles
+description: Understanding Shard profile manifests
+---
+
+# Profiles
+
+A profile is a declarative manifest that describes a complete Minecraft setup.
+
+## Profile Location
+
+Profiles are stored in `~/.shard/profiles/<profile-id>/`:
+
+```
+~/.shard/profiles/
+└── my-survival-world/
+    ├── profile.json      # The manifest
+    └── overrides/        # Profile-specific files
+```
+
+## Profile Manifest
+
+A `profile.json` looks like this:
+
+```json
+{
+  "version": "1.21.4",
+  "loader": {
+    "type": "fabric",
+    "version": "0.16.9"
+  },
+  "mods": [
+    {
+      "hash": "sha256:a3f2e1d4...",
+      "name": "Sodium",
+      "enabled": true,
+      "source": {
+        "platform": "modrinth",
+        "project_id": "AANobbMI",
+        "version_id": "mc1.21.4-0.6.5"
+      }
+    }
+  ],
+  "resourcepacks": [],
+  "shaderpacks": []
+}
+```
+
+## Fields
+
+| Field | Description |
+|-------|-------------|
+| `version` | Minecraft version (e.g., "1.21.4") |
+| `loader` | Optional mod loader configuration |
+| `loader.type` | "fabric", "forge", "neoforge", or null for vanilla |
+| `loader.version` | Loader version |
+| `mods` | Array of mod references |
+| `resourcepacks` | Array of resource pack references |
+| `shaderpacks` | Array of shader pack references |
+
+## Content References
+
+Each mod/pack reference includes:
+
+| Field | Description |
+|-------|-------------|
+| `hash` | SHA-256 hash of the file (links to content store) |
+| `name` | Display name |
+| `enabled` | Whether to include in instance |
+| `source` | Where this came from (Modrinth, CurseForge, local) |
+
+## Overrides
+
+The `overrides/` directory contains profile-specific files that aren't in the content store:
+
+- Config files you've customized
+- World saves (if stored with profile)
+- Other files you want per-profile
+
+These are copied into the instance directory at launch.
+
+## Profile Operations
+
+### Clone
+
+Create a copy of a profile with all its content references:
+
+```bash
+shard profile clone "Original" "New Profile"
+```
+
+### Diff
+
+Compare two profiles to see what's different:
+
+```bash
+shard profile diff "Profile A" "Profile B"
+```
+
+### Export
+
+Export a profile for sharing (coming soon).
+
+## CLI Commands
+
+```bash
+# List profiles
+shard profile list
+
+# Create a profile
+shard profile create "Name" --version 1.21.4 --loader fabric
+
+# Delete a profile
+shard profile delete "Name"
+
+# Show profile details
+shard profile show "Name"
+```
