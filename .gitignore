@@ -19,6 +19,9 @@ web/out/
 web/test-results/
 web/playwright-report/
 
+# Marketing
+marketing/
+
 # General
 .playwright-mcp
 *.log
