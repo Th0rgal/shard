@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="Shard Launcher" width="128" height="128">
+  <img src="logo.png" alt="Shard Launcher" width="256" height="256">
 </p>
 
 <h1 align="center">Shard</h1>

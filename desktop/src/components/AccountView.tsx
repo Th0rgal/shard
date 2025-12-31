@@ -198,10 +198,12 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
         id: activeAccount.uuid,
         url: skinUrl.trim(),
         variant: skinVariant,
+        saveToLibrary: true,
       });
       await loadAccountInfo(activeAccount.uuid);
+      await loadSkinLibrary(librarySearch); // Refresh library
       setSkinUrl("");
-      notify("Skin updated successfully");
+      notify("Skin updated and added to library");
     } catch (err) {
       setError(String(err));
     } finally {
@@ -280,10 +282,142 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
   const activeSkinUrl = activeSkin?.url || info?.skin_url || "";
   const activeCapeUrl = activeCape?.url ?? (info?.profile ? null : info?.cape_url ?? null);
 
-  // Get avatar URL from mc-heads.net
-  const getAvatarUrl = (uuid: string) => {
+  // Get avatar URL - use skin texture directly for active account, mc-heads for others
+  const getAvatarUrl = (uuid: string, skinUrl?: string) => {
+    // If we have a direct skin URL, use it (for dropdown where we show current skin)
+    if (skinUrl) {
+      return skinUrl;
+    }
+    // Fallback to mc-heads.net
     const cleanUuid = uuid.replace(/-/g, "");
     return `https://mc-heads.net/avatar/${cleanUuid}/64`;
+  };
+
+  // Render a skin head from the skin texture using canvas
+  const SkinHead = ({ skinUrl, size = 44, className }: { skinUrl: string; size?: number; className?: string }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+      if (!canvasRef.current || !skinUrl) return;
+
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        // Clear canvas
+        ctx.clearRect(0, 0, size, size);
+
+        // Minecraft skin head is at (8, 8) with size 8x8 pixels
+        // Draw the base head layer
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 8, 8, 8, 8, 0, 0, size, size);
+
+        // Draw the overlay layer (at 40, 8)
+        ctx.drawImage(img, 40, 8, 8, 8, 0, 0, size, size);
+      };
+      img.onerror = () => {
+        // On error, try to show a placeholder
+        ctx.fillStyle = "#333";
+        ctx.fillRect(0, 0, size, size);
+      };
+      img.src = skinUrl;
+    }, [skinUrl, size]);
+
+    return (
+      <canvas
+        ref={canvasRef}
+        width={size}
+        height={size}
+        className={className}
+        style={{ imageRendering: "pixelated", borderRadius: size > 40 ? 10 : 6 }}
+      />
+    );
+  };
+
+  // Simple static skin preview for library cards (more performant than 3D viewer)
+  const SkinPreview = ({ skinUrl, width = 60, height = 90 }: { skinUrl: string; width?: number; height?: number }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [loaded, setLoaded] = useState(false);
+    const [error, setError] = useState(false);
+
+    useEffect(() => {
+      if (!canvasRef.current || !skinUrl) {
+        setError(true);
+        return;
+      }
+
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      setLoaded(false);
+      setError(false);
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        ctx.clearRect(0, 0, width, height);
+        ctx.imageSmoothingEnabled = false;
+
+        // Scale to fit - skin preview showing front view
+        const scale = Math.min(width / 16, height / 32) * 0.85;
+        const offsetX = (width - 16 * scale) / 2;
+        const offsetY = (height - 32 * scale) / 2;
+
+        // Draw head (8x8 at position 8,8)
+        ctx.drawImage(img, 8, 8, 8, 8, offsetX + 4 * scale, offsetY, 8 * scale, 8 * scale);
+        // Draw head overlay
+        ctx.drawImage(img, 40, 8, 8, 8, offsetX + 4 * scale, offsetY, 8 * scale, 8 * scale);
+
+        // Draw body (8x12 at position 20,20)
+        ctx.drawImage(img, 20, 20, 8, 12, offsetX + 4 * scale, offsetY + 8 * scale, 8 * scale, 12 * scale);
+
+        // Draw right arm (4x12 at position 44,20)
+        ctx.drawImage(img, 44, 20, 4, 12, offsetX, offsetY + 8 * scale, 4 * scale, 12 * scale);
+
+        // Draw left arm (4x12 at position 36,52)
+        ctx.drawImage(img, 36, 52, 4, 12, offsetX + 12 * scale, offsetY + 8 * scale, 4 * scale, 12 * scale);
+
+        // Draw right leg (4x12 at position 4,20)
+        ctx.drawImage(img, 4, 20, 4, 12, offsetX + 4 * scale, offsetY + 20 * scale, 4 * scale, 12 * scale);
+
+        // Draw left leg (4x12 at position 20,52)
+        ctx.drawImage(img, 20, 52, 4, 12, offsetX + 8 * scale, offsetY + 20 * scale, 4 * scale, 12 * scale);
+
+        setLoaded(true);
+      };
+      img.onerror = () => {
+        setError(true);
+      };
+      img.src = skinUrl;
+    }, [skinUrl, width, height]);
+
+    if (error || !skinUrl) {
+      return (
+        <div className="skin-preview-error" style={{ width, height, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.3">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M9 9h.01M15 9h.01M9 15h6" />
+          </svg>
+        </div>
+      );
+    }
+
+    return (
+      <canvas
+        ref={canvasRef}
+        width={width}
+        height={height}
+        style={{
+          imageRendering: "pixelated",
+          opacity: loaded ? 1 : 0.5,
+          transition: "opacity 0.2s ease"
+        }}
+      />
+    );
   };
 
   if (!accounts || accounts.accounts.length === 0) {
@@ -318,11 +452,15 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
           >
             {activeAccount && (
               <>
-                <img
-                  className="account-selector-avatar"
-                  src={getAvatarUrl(activeAccount.uuid)}
-                  alt={activeAccount.username}
-                />
+                {activeSkinUrl ? (
+                  <SkinHead skinUrl={activeSkinUrl} size={44} className="account-selector-avatar" />
+                ) : (
+                  <img
+                    className="account-selector-avatar"
+                    src={getAvatarUrl(activeAccount.uuid)}
+                    alt={activeAccount.username}
+                  />
+                )}
                 <div className="account-selector-info">
                   <span className="account-selector-name">{activeAccount.username}</span>
                   <span className="account-selector-hint">Click to switch accounts</span>
@@ -408,8 +546,8 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
               model={skinVariant}
               width={280}
               height={400}
-              animation="idle"
-              animationSpeed={0.6}
+              animation="walk"
+              animationSpeed={0.3}
             />
             {/* Simple variant toggle below viewer */}
             <div className="account-viewer-variant">
@@ -544,18 +682,6 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
                     )}
                   </div>
 
-                  {/* Upload button in library tab for quick access */}
-                  <button
-                    className="btn btn-secondary account-library-upload-btn"
-                    onClick={handleUploadSkin}
-                    disabled={uploading}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M12 9v2.5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9M7 2v7M4 5l3-3 3 3" />
-                    </svg>
-                    Add Skin to Library
-                  </button>
-
                   {libraryLoading ? (
                     <div className="account-library-loading">
                       <div className="skin-viewer-loading" />
@@ -582,12 +708,10 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
                             onClick={() => setSelectedSkin(isSelected ? null : item)}
                           >
                             <div className="account-library-card-preview">
-                              <SkinViewer
+                              <SkinPreview
                                 skinUrl={item.resolvedUrl || ""}
                                 width={80}
                                 height={120}
-                                animation="idle"
-                                animationSpeed={0.5}
                               />
                             </div>
                             <div className="account-library-card-info">

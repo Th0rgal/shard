@@ -3538,25 +3538,28 @@ a {
 }
 
 .account-header {
-  margin-bottom: 32px;
+  margin-bottom: 24px;
+  flex-shrink: 0;
 }
 
 .account-selector {
   position: relative;
   display: inline-block;
+  max-width: 100%;
 }
 
 .account-selector-trigger {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
+  gap: 12px;
+  padding: 10px 14px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 280px;
+  min-width: 200px;
+  max-width: 100%;
 }
 
 .account-selector-trigger:hover {
@@ -3730,8 +3733,10 @@ a {
 /* Account content layout */
 .account-content {
   display: flex;
-  gap: 40px;
+  gap: 32px;
   align-items: flex-start;
+  min-height: 0;
+  flex: 1;
 }
 
 .account-viewer {
@@ -3740,6 +3745,23 @@ a {
   flex-direction: column;
   align-items: center;
   gap: 12px;
+}
+
+/* Responsive - stack vertically on narrow screens */
+@media (max-width: 700px) {
+  .account-content {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .account-viewer {
+    width: 100%;
+    max-width: 280px;
+  }
+
+  .account-panel {
+    width: 100%;
+  }
 }
 
 /* Simple variant toggle below viewer */
@@ -3785,8 +3807,9 @@ a {
   gap: 4px;
   padding: 4px;
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 12px;
-  margin-bottom: 24px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
 }
 
 .account-tab {
@@ -3794,16 +3817,17 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
+  gap: 6px;
+  padding: 8px 12px;
   background: none;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .account-tab:hover {
