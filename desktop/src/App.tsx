@@ -107,34 +107,48 @@ function App() {
   useEffect(() => {
     const unlisten = listen<LaunchEvent>("launch-status", (event) => {
       setLaunchStatus(event.payload);
-      setLaunchHidden(false);
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-        hideTimerRef.current = null;
-      }
-      if (clearTimerRef.current) {
-        clearTimeout(clearTimerRef.current);
-        clearTimerRef.current = null;
-      }
       if (event.payload.stage === "error") {
         notify("Launch failed", event.payload.message ?? "Unknown error");
       }
-      if (event.payload.stage === "running") {
-        hideTimerRef.current = setTimeout(() => {
-          setLaunchHidden(true);
-          clearTimerRef.current = setTimeout(() => setLaunchStatus(null), 450);
-        }, 3500);
-      }
-      if (event.payload.stage === "done") {
-        setTimeout(() => setLaunchStatus(null), 2500);
-      }
     });
     return () => {
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
       void unlisten.then((fn) => fn());
     };
   }, [setLaunchStatus, notify]);
+
+  // Auto-hide running banner after a short delay
+  useEffect(() => {
+    if (!launchStatus) return;
+
+    setLaunchHidden(false);
+
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    if (clearTimerRef.current) {
+      clearTimeout(clearTimerRef.current);
+      clearTimerRef.current = null;
+    }
+
+    if (launchStatus.stage === "running") {
+      hideTimerRef.current = setTimeout(() => {
+        setLaunchHidden(true);
+        clearTimerRef.current = setTimeout(() => setLaunchStatus(null), 450);
+      }, 3500);
+    }
+
+    if (launchStatus.stage === "done") {
+      clearTimerRef.current = setTimeout(() => setLaunchStatus(null), 2500);
+    }
+  }, [launchStatus, setLaunchStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    };
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
