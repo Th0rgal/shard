@@ -1350,7 +1350,7 @@ a {
 .content-area {
   width: 100%;
   max-width: 100%;
-  padding: 40px;
+  padding: 0 40px;
   position: relative;
   flex: 1;
   display: flex;
@@ -1358,6 +1358,12 @@ a {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
+}
+
+/* Direct empty-state child needs vertical margins since content-area only has horizontal padding */
+.content-area > .empty-state {
+  margin-top: 40px;
+  margin-bottom: 40px;
 }
 
 .content-area::-webkit-scrollbar {
@@ -2533,7 +2539,7 @@ a {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--border-default);
     border-radius: 10px;
-    padding: 10px 14px;
+    padding: 14px 16px;
     font-size: 14px;
     color: var(--text-primary);
     outline: none;
@@ -2565,10 +2571,13 @@ a {
   }
 
   .select {
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--border-default);
     border-radius: 10px;
-    padding: 10px 14px;
+    padding: 14px 40px 14px 16px;
     font-size: 14px;
     color: var(--text-primary);
     outline: none;
@@ -2577,10 +2586,14 @@ a {
     box-shadow:
       inset 0 1px 2px rgba(0, 0, 0, 0.06),
       inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px;
   }
 
   .select:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background-color: rgba(255, 255, 255, 0.06);
     border-color: var(--border-strong);
     box-shadow:
       inset 0 1px 2px rgba(0, 0, 0, 0.04),
@@ -2589,6 +2602,7 @@ a {
 
   .select:focus {
     border-color: rgba(232, 168, 85, 0.4);
+    background-color: rgba(255, 255, 255, 0.06);
     box-shadow:
       inset 0 1px 2px rgba(0, 0, 0, 0.04),
       inset 0 0 0 1px rgba(255, 255, 255, 0.04);
@@ -3239,7 +3253,8 @@ a {
   bottom: 0;
   left: var(--sidebar-width);
   right: 0;
-  background: rgba(18, 17, 16, 0.95);
+  background: rgba(18, 17, 16, 0.7);
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border-top: 1px solid var(--border-subtle);
   padding: 14px 28px;
@@ -3912,26 +3927,73 @@ a {
 }
 
 .logs-select {
-  padding: 6px 10px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 8px 32px 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+}
+
+.logs-select:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-default);
 }
 
 .logs-checkbox {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.logs-checkbox:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-default);
 }
 
 .logs-checkbox input {
-  accent-color: var(--accent-primary);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.logs-checkbox input:checked {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--text-secondary);
+}
+
+.logs-checkbox input:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--accent-primary);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 /* File list */

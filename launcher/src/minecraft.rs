@@ -133,9 +133,39 @@ fn resolve_version_id(paths: &Paths, mc_version: &str, loader: Option<&Loader>) 
     }
 }
 
+/// Fetch the latest stable Fabric loader version from the Fabric Meta API
+fn resolve_fabric_latest_version() -> Result<String> {
+    let url = "https://meta.fabricmc.net/v2/versions/loader";
+    let json = download_json(url)?;
+    let versions = json.as_array().context("fabric loader versions not an array")?;
+
+    // Find the first stable version
+    for entry in versions {
+        if entry.get("stable").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if let Some(version) = entry.get("version").and_then(|v| v.as_str()) {
+                return Ok(version.to_string());
+            }
+        }
+    }
+
+    // Fallback to first version if no stable found
+    versions.first()
+        .and_then(|v| v.get("version"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .context("no fabric loader versions found")
+}
+
 fn ensure_fabric_profile(paths: &Paths, mc_version: &str, loader_version: &str) -> Result<String> {
+    // Resolve "latest" to actual version number
+    let resolved_version = if loader_version.eq_ignore_ascii_case("latest") {
+        resolve_fabric_latest_version()?
+    } else {
+        loader_version.to_string()
+    };
+
     let url = format!(
-        "https://meta.fabricmc.net/v2/versions/loader/{mc_version}/{loader_version}/profile/json"
+        "https://meta.fabricmc.net/v2/versions/loader/{mc_version}/{resolved_version}/profile/json"
     );
     let profile_json = download_json(&url)?;
     let id = profile_json
@@ -155,10 +185,30 @@ fn ensure_fabric_profile(paths: &Paths, mc_version: &str, loader_version: &str) 
     Ok(id.to_string())
 }
 
+/// Fetch the latest Quilt loader version from the Quilt Meta API
+fn resolve_quilt_latest_version() -> Result<String> {
+    let url = "https://meta.quiltmc.org/v3/versions/loader";
+    let json = download_json(url)?;
+    let versions = json.as_array().context("quilt loader versions not an array")?;
+
+    // Return the first version (they're sorted by newest first)
+    versions.first()
+        .and_then(|v| v.get("version"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .context("no quilt loader versions found")
+}
+
 fn ensure_quilt_profile(paths: &Paths, mc_version: &str, loader_version: &str) -> Result<String> {
-    // Quilt uses a similar API structure to Fabric
+    // Resolve "latest" to actual version number
+    let resolved_version = if loader_version.eq_ignore_ascii_case("latest") {
+        resolve_quilt_latest_version()?
+    } else {
+        loader_version.to_string()
+    };
+
     let url = format!(
-        "https://meta.quiltmc.org/v3/versions/loader/{mc_version}/{loader_version}/profile/json"
+        "https://meta.quiltmc.org/v3/versions/loader/{mc_version}/{resolved_version}/profile/json"
     );
     let profile_json = download_json(&url)?;
     let id = profile_json
@@ -178,12 +228,39 @@ fn ensure_quilt_profile(paths: &Paths, mc_version: &str, loader_version: &str) -
     Ok(id.to_string())
 }
 
+/// Fetch the latest NeoForge version for a given Minecraft version
+fn resolve_neoforge_latest_version(mc_version: &str) -> Result<String> {
+    // NeoForge versions are based on MC version without the leading "1." (e.g., 1.21.1 -> 21.1)
+    let filter = mc_version.strip_prefix("1.").unwrap_or(mc_version);
+    let url = format!(
+        "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge?filter={}.",
+        filter
+    );
+    let json = download_json(&url)?;
+    let versions = json.get("versions")
+        .and_then(|v| v.as_array())
+        .context("neoforge versions not an array")?;
+
+    // Return the last version (they're sorted oldest first, so last is newest)
+    versions.last()
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .context("no neoforge versions found for this minecraft version")
+}
+
 fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str) -> Result<String> {
+    // Resolve "latest" to actual version number
+    let resolved_version = if loader_version.eq_ignore_ascii_case("latest") {
+        resolve_neoforge_latest_version(mc_version)?
+    } else {
+        loader_version.to_string()
+    };
+
     // NeoForge version format: just the loader version (e.g., "21.4.156")
     // The installer JAR is at: maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar
     // Note: loader_version should NOT contain the MC version prefix
 
-    let id = format!("neoforge-{loader_version}");
+    let id = format!("neoforge-{resolved_version}");
     let target = paths.minecraft_version_json(&id);
 
     if target.exists() {
@@ -192,10 +269,10 @@ fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str
 
     // Download installer JAR and extract version.json
     let installer_url = format!(
-        "https://maven.neoforged.net/releases/net/neoforged/neoforge/{loader_version}/neoforge-{loader_version}-installer.jar"
+        "https://maven.neoforged.net/releases/net/neoforged/neoforge/{resolved_version}/neoforge-{resolved_version}-installer.jar"
     );
 
-    let installer_path = paths.cache_downloads.join(format!("neoforge-{loader_version}-installer.jar"));
+    let installer_path = paths.cache_downloads.join(format!("neoforge-{resolved_version}-installer.jar"));
     download_with_sha1(&installer_url, &installer_path, None)?;
 
     // Extract version.json from the installer JAR
@@ -220,12 +297,41 @@ fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str
     Ok(id)
 }
 
+/// Fetch the latest Forge version for a given Minecraft version
+fn resolve_forge_latest_version(mc_version: &str) -> Result<String> {
+    let url = "https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json";
+    let json = download_json(url)?;
+    let promos = json.get("promos")
+        .and_then(|v| v.as_object())
+        .context("forge promos not an object")?;
+
+    // Try recommended first, then latest
+    let recommended_key = format!("{}-recommended", mc_version);
+    let latest_key = format!("{}-latest", mc_version);
+
+    if let Some(version) = promos.get(&recommended_key).and_then(|v| v.as_str()) {
+        return Ok(version.to_string());
+    }
+    if let Some(version) = promos.get(&latest_key).and_then(|v| v.as_str()) {
+        return Ok(version.to_string());
+    }
+
+    bail!("no forge version found for minecraft {}", mc_version)
+}
+
 fn ensure_forge_profile(paths: &Paths, mc_version: &str, loader_version: &str) -> Result<String> {
-    // Forge version format: MC-ForgeVersion (e.g., "1.20.1-47.3.0")
-    let version_id = if loader_version.contains('-') {
-        loader_version.to_string()
+    // Resolve "latest" to actual version number
+    let resolved_loader = if loader_version.eq_ignore_ascii_case("latest") {
+        resolve_forge_latest_version(mc_version)?
     } else {
-        format!("{mc_version}-{loader_version}")
+        loader_version.to_string()
+    };
+
+    // Forge version format: MC-ForgeVersion (e.g., "1.20.1-47.3.0")
+    let version_id = if resolved_loader.contains('-') {
+        resolved_loader
+    } else {
+        format!("{mc_version}-{resolved_loader}")
     };
 
     let id = format!("forge-{version_id}");

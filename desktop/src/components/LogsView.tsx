@@ -323,47 +323,62 @@ export function LogsView() {
             </div>
           )}
 
-          <div ref={logsContainerRef} className="logs-output">
-            {loading && (
-              <div className="logs-loading">
-                <svg className="spin" width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" />
+          {loading && (
+            <div className="logs-loading">
+              <svg className="spin" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" strokeDasharray="40" strokeDashoffset="10" />
+              </svg>
+            </div>
+          )}
+
+          {!loading && filteredLogs.length === 0 && (
+            <div className="empty-state-container" style={{ flex: 1 }}>
+              <div className="empty-state">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ opacity: 0.4, marginBottom: 16 }}>
+                  <circle cx="24" cy="24" r="16" stroke="currentColor" strokeWidth="2" />
+                  <path d="M24 16v8l5 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
+                <h3>{logs.length === 0 ? "No logs yet" : "No matching logs"}</h3>
+                <p style={{ marginBottom: 0 }}>
+                  {logs.length === 0
+                    ? "Launch the game to see live output"
+                    : "Try adjusting your filter settings"}
+                </p>
               </div>
-            )}
+            </div>
+          )}
 
-            {!loading && filteredLogs.length === 0 && (
-              <div className="logs-empty-output">
-                {logs.length === 0 ? "No logs yet. Launch the game to see output." : "No logs match your filter."}
+          {!loading && filteredLogs.length > 0 && (
+            <>
+              <div ref={logsContainerRef} className="logs-output">
+                {filteredLogs.map((entry, i) => (
+                  <div key={`${entry.line_number}-${i}`} className="logs-line" data-level={entry.level}>
+                    {entry.timestamp && (
+                      <span className="logs-time">{entry.timestamp}</span>
+                    )}
+                    {entry.level !== "unknown" && (
+                      <span className="logs-level" style={{ color: LEVEL_COLORS[entry.level] }}>
+                        {entry.level.toUpperCase()}
+                      </span>
+                    )}
+                    <span className="logs-message" style={{ color: LEVEL_COLORS[entry.level] }}>
+                      {entry.message}
+                    </span>
+                  </div>
+                ))}
               </div>
-            )}
 
-            {!loading && filteredLogs.map((entry, i) => (
-              <div key={`${entry.line_number}-${i}`} className="logs-line" data-level={entry.level}>
-                {entry.timestamp && (
-                  <span className="logs-time">{entry.timestamp}</span>
-                )}
-                {entry.level !== "unknown" && (
-                  <span className="logs-level" style={{ color: LEVEL_COLORS[entry.level] }}>
-                    {entry.level.toUpperCase()}
+              <div className="logs-status">
+                <span>{filteredLogs.length} of {logs.length} entries</span>
+                {tab === "latest" && watching && (
+                  <span className="logs-status-live">
+                    <span className="logs-live-dot" />
+                    Live
                   </span>
                 )}
-                <span className="logs-message" style={{ color: LEVEL_COLORS[entry.level] }}>
-                  {entry.message}
-                </span>
               </div>
-            ))}
-          </div>
-
-          <div className="logs-status">
-            <span>{filteredLogs.length} of {logs.length} entries</span>
-            {tab === "latest" && watching && (
-              <span className="logs-status-live">
-                <span className="logs-live-dot" />
-                Live
-              </span>
-            )}
-          </div>
+            </>
+          )}
         </div>
       )}
     </div>
