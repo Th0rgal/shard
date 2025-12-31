@@ -173,10 +173,10 @@ MIT
 ---
 
 <p align="center">
-  <sub>Built by <a href="https://github.com/Th0rgal">@Th0rgal</a></sub><br>
+  <sub>Built by <a href="https://thomas.md">@Th0rgal</a></sub><br>
   <sub>
-    <a href="https://github.com/Th0rgal/horus-nix-home">horus-nix-home</a> •
-    <a href="https://github.com/Th0rgal/binance.py">binance.py</a> •
-    <a href="https://github.com/Th0rgal/hackedserver">HackedServer</a>
+    <a href="https://oraxen.com">Oraxen</a> •
+    <a href="https://hackedserver.org">HackedServer</a> •
+    <a href="https://asyncanticheat.com">AsyncAntiCheat</a>
   </sub>
 </p>
