@@ -1,0 +1,163 @@
+name: Release publish automation
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  flathub:
+    if: ${{ secrets.FLATHUB_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Collect release info
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          DATE="$(jq -r '.release.published_at' "$GITHUB_EVENT_PATH" | cut -d'T' -f1)"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "date=${DATE}" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch SHA256SUMS
+        id: hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.release.outputs.tag }}"
+          curl -fsSL "https://github.com/th0rgal/shard/releases/download/${TAG}/SHA256SUMS.txt" -o /tmp/SHA256SUMS.txt
+          DEB_HASH="$(grep 'shard-launcher-linux-x64.deb' /tmp/SHA256SUMS.txt | awk '{print $1}')"
+          if [ -z "$DEB_HASH" ]; then
+            echo "Missing shard-launcher-linux-x64.deb hash in SHA256SUMS.txt" >&2
+            exit 1
+          fi
+          echo "deb_hash=${DEB_HASH}" >> "$GITHUB_OUTPUT"
+
+      - name: Update Flathub repo
+        shell: bash
+        env:
+          FLATHUB_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+          FLATHUB_REPO: ${{ secrets.FLATHUB_REPO }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.release.outputs.tag }}"
+          VERSION="${{ steps.release.outputs.version }}"
+          DATE="${{ steps.release.outputs.date }}"
+          DEB_HASH="${{ steps.hashes.outputs.deb_hash }}"
+          FLATHUB_REPO="${FLATHUB_REPO:-flathub/sh.shard.launcher}"
+
+          git clone "https://x-access-token:${FLATHUB_TOKEN}@github.com/${FLATHUB_REPO}.git" flathub-repo
+          cd flathub-repo
+
+          python3 - <<PY
+import re
+from pathlib import Path
+
+version = "${VERSION}"
+tag = "${TAG}"
+sha = "${DEB_HASH}"
+manifest = Path("sh.shard.launcher.yml")
+text = manifest.read_text()
+text = re.sub(r"url: .*shard-launcher-linux-x64\.deb", f"url: https://github.com/th0rgal/shard/releases/download/{tag}/shard-launcher-linux-x64.deb", text)
+text = re.sub(r"sha256: [0-9A-Fa-f]+", f"sha256: {sha}", text)
+manifest.write_text(text)
+
+meta = Path("sh.shard.launcher.metainfo.xml")
+meta_text = meta.read_text()
+release_entry = f"\n    <release version=\"{version}\" date=\"{DATE}\">\n      <description>\n        <p>Release {version}</p>\n      </description>\n    </release>"
+meta_text = meta_text.replace("<releases>", "<releases>" + release_entry)
+meta.write_text(meta_text)
+PY
+
+          git add sh.shard.launcher.yml sh.shard.launcher.metainfo.xml
+          git -c user.name="github-actions" -c user.email="github-actions@github.com" commit -m "Update Shard Launcher to ${VERSION}"
+          git push
+
+  winget:
+    if: ${{ secrets.WINGET_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Collect release info
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch SHA256SUMS
+        id: hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.release.outputs.tag }}"
+          curl -fsSL "https://github.com/th0rgal/shard/releases/download/${TAG}/SHA256SUMS.txt" -o /tmp/SHA256SUMS.txt
+          MSI_HASH="$(grep 'shard-launcher-windows-x64.msi' /tmp/SHA256SUMS.txt | awk '{print $1}')"
+          if [ -z "$MSI_HASH" ]; then
+            echo "Missing shard-launcher-windows-x64.msi hash in SHA256SUMS.txt" >&2
+            exit 1
+          fi
+          echo "msi_hash=${MSI_HASH}" >> "$GITHUB_OUTPUT"
+
+      - name: Update winget manifests and open PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          WINGET_FORK: ${{ secrets.WINGET_FORK }}
+          WINGET_BASE: ${{ secrets.WINGET_BASE }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.release.outputs.tag }}"
+          VERSION="${{ steps.release.outputs.version }}"
+          MSI_HASH="${{ steps.hashes.outputs.msi_hash }}"
+          WINGET_FORK="${WINGET_FORK:-Th0rgal/winget-pkgs}"
+          WINGET_BASE="${WINGET_BASE:-microsoft/winget-pkgs}"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${WINGET_FORK}.git" winget-pkgs
+          cd winget-pkgs
+          BRANCH="shardlauncher-${VERSION}"
+          git checkout -b "$BRANCH"
+
+          TARGET_DIR="manifests/t/Th0rgal/ShardLauncher/${VERSION}"
+          mkdir -p "$TARGET_DIR"
+          cp -R "$GITHUB_WORKSPACE/packaging/winget/Th0rgal.ShardLauncher/0.1.4/." "$TARGET_DIR/"
+
+          python3 - <<PY
+import pathlib
+
+version = "${VERSION}"
+msi_hash = "${MSI_HASH}"
+tag = "${TAG}"
+
+paths = pathlib.Path("${TARGET_DIR}").glob("*.yaml")
+for path in paths:
+    text = path.read_text()
+    text = text.replace("PackageVersion: 0.1.4", f"PackageVersion: {version}")
+    text = text.replace("/download/v0.1.4/", f"/download/{tag}/")
+    text = text.replace("InstallerSha256: 5245BE2EDD1E83660B4B0F4C9B4ECFE974B94F9F64DDE570939A957B7D8938EB", f"InstallerSha256: {msi_hash}")
+    path.write_text(text)
+PY
+
+          git add "$TARGET_DIR"
+          git -c user.name="github-actions" -c user.email="github-actions@github.com" commit -m "Add Shard Launcher ${VERSION}"
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --repo "$WINGET_BASE" \
+            --head "${WINGET_FORK#*/}:$BRANCH" \
+            --title "Shard Launcher ${VERSION}" \
+            --body "Automated update for Shard Launcher ${VERSION}." \
+            --base master
