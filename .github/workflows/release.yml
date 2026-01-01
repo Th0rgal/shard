@@ -56,6 +56,9 @@ jobs:
           sudo apt-get install -y libssl-dev
 
       - name: Build CLI
+        env:
+          SHARD_MS_CLIENT_ID: ${{ secrets.SHARD_MS_CLIENT_ID }}
+          SHARD_CURSEFORGE_API_KEY: ${{ secrets.SHARD_CURSEFORGE_API_KEY }}
         run: cargo build --release --target ${{ matrix.target }} -p shard
 
       - name: Prepare artifact (Unix)
@@ -149,6 +152,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SHARD_MS_CLIENT_ID: ${{ secrets.SHARD_MS_CLIENT_ID }}
+          SHARD_CURSEFORGE_API_KEY: ${{ secrets.SHARD_CURSEFORGE_API_KEY }}
         with:
           projectPath: desktop
           args: --target ${{ matrix.target }}

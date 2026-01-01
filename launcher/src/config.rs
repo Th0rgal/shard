@@ -4,6 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+/// Microsoft Client ID baked in at compile time (for release builds)
+const BUILTIN_MS_CLIENT_ID: Option<&str> = option_env!("SHARD_MS_CLIENT_ID");
+
+/// CurseForge API key baked in at compile time (for release builds)
+const BUILTIN_CURSEFORGE_API_KEY: Option<&str> = option_env!("SHARD_CURSEFORGE_API_KEY");
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
@@ -31,39 +37,64 @@ pub fn load_config(paths: &Paths) -> Result<Config> {
         Config::default()
     };
 
-    if let Ok(value) = std::env::var("SHARD_MS_CLIENT_ID") {
-        let trimmed = value.trim().to_string();
-        if !trimmed.is_empty() {
-            config.msa_client_id = Some(trimmed);
-        }
-    } else if let Ok(value) = std::env::var("MICROSOFT_CLIENT_ID") {
-        let trimmed = value.trim().to_string();
-        if !trimmed.is_empty() {
-            config.msa_client_id = Some(trimmed);
+    // Priority for MS Client ID:
+    // 1. Config file (user override)
+    // 2. Runtime env var
+    // 3. Compile-time embedded value
+    if config.msa_client_id.is_none() {
+        if let Ok(value) = std::env::var("SHARD_MS_CLIENT_ID") {
+            let trimmed = value.trim().to_string();
+            if !trimmed.is_empty() {
+                config.msa_client_id = Some(trimmed);
+            }
+        } else if let Ok(value) = std::env::var("MICROSOFT_CLIENT_ID") {
+            let trimmed = value.trim().to_string();
+            if !trimmed.is_empty() {
+                config.msa_client_id = Some(trimmed);
+            }
+        } else if let Some(builtin) = BUILTIN_MS_CLIENT_ID {
+            let trimmed = builtin.trim();
+            if !trimmed.is_empty() {
+                config.msa_client_id = Some(trimmed.to_string());
+            }
         }
     }
 
-    if let Ok(value) = std::env::var("SHARD_MS_CLIENT_SECRET") {
-        let trimmed = value.trim().to_string();
-        if !trimmed.is_empty() {
-            config.msa_client_secret = Some(trimmed);
-        }
-    } else if let Ok(value) = std::env::var("MICROSOFT_CLIENT_SECRET") {
-        let trimmed = value.trim().to_string();
-        if !trimmed.is_empty() {
-            config.msa_client_secret = Some(trimmed);
+    // MS Client Secret (rarely used, but follow same pattern)
+    if config.msa_client_secret.is_none() {
+        if let Ok(value) = std::env::var("SHARD_MS_CLIENT_SECRET") {
+            let trimmed = value.trim().to_string();
+            if !trimmed.is_empty() {
+                config.msa_client_secret = Some(trimmed);
+            }
+        } else if let Ok(value) = std::env::var("MICROSOFT_CLIENT_SECRET") {
+            let trimmed = value.trim().to_string();
+            if !trimmed.is_empty() {
+                config.msa_client_secret = Some(trimmed);
+            }
         }
     }
 
-    if let Ok(value) = std::env::var("SHARD_CURSEFORGE_API_KEY") {
-        let trimmed = value.trim().to_string();
-        if !trimmed.is_empty() {
-            config.curseforge_api_key = Some(trimmed);
-        }
-    } else if let Ok(value) = std::env::var("CURSEFORGE_API_KEY") {
-        let trimmed = value.trim().to_string();
-        if !trimmed.is_empty() {
-            config.curseforge_api_key = Some(trimmed);
+    // Priority for CurseForge API key:
+    // 1. Config file (user override)
+    // 2. Runtime env var
+    // 3. Compile-time embedded value
+    if config.curseforge_api_key.is_none() {
+        if let Ok(value) = std::env::var("SHARD_CURSEFORGE_API_KEY") {
+            let trimmed = value.trim().to_string();
+            if !trimmed.is_empty() {
+                config.curseforge_api_key = Some(trimmed);
+            }
+        } else if let Ok(value) = std::env::var("CURSEFORGE_API_KEY") {
+            let trimmed = value.trim().to_string();
+            if !trimmed.is_empty() {
+                config.curseforge_api_key = Some(trimmed);
+            }
+        } else if let Some(builtin) = BUILTIN_CURSEFORGE_API_KEY {
+            let trimmed = builtin.trim();
+            if !trimmed.is_empty() {
+                config.curseforge_api_key = Some(trimmed.to_string());
+            }
         }
     }
 
