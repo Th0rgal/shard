@@ -8,6 +8,109 @@ permissions:
   contents: read
 
 jobs:
+  aur:
+    if: ${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect release info
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.release.outputs.tag }}"
+          curl -sL "https://github.com/th0rgal/shard/releases/download/${TAG}/SHA256SUMS.txt" -o SHA256SUMS.txt
+
+      - name: Prepare shard PKGBUILD
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release.outputs.version }}"
+          CLI_SHA=$(grep "shard-cli-linux-x64.tar.gz" SHA256SUMS.txt | cut -d' ' -f1)
+          if [ -z "$CLI_SHA" ]; then
+            echo "Missing shard-cli-linux-x64.tar.gz hash in SHA256SUMS.txt" >&2
+            exit 1
+          fi
+
+          mkdir -p shard
+          cat > shard/PKGBUILD << EOF
+          # Maintainer: Thomas Marchand <thomas@thomas.md>
+          pkgname=shard
+          pkgver=${VERSION}
+          pkgrel=1
+          pkgdesc="A minimal, content-addressed Minecraft launcher (CLI)"
+          arch=('x86_64')
+          url="https://shard.thomas.md"
+          license=('MIT')
+          depends=('gcc-libs')
+          source=("https://github.com/th0rgal/shard/releases/download/v\${pkgver}/shard-cli-linux-x64.tar.gz")
+          sha256sums=('${CLI_SHA}')
+
+          package() {
+              install -Dm755 shard "\${pkgdir}/usr/bin/shard"
+          }
+          EOF
+
+      - name: Prepare shard-launcher-bin PKGBUILD
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release.outputs.version }}"
+          DESKTOP_SHA=$(grep "shard-launcher-linux-x64.deb" SHA256SUMS.txt | cut -d' ' -f1)
+          if [ -z "$DESKTOP_SHA" ]; then
+            echo "Missing shard-launcher-linux-x64.deb hash in SHA256SUMS.txt" >&2
+            exit 1
+          fi
+
+          mkdir -p shard-launcher-bin
+          cat > shard-launcher-bin/PKGBUILD << EOF
+          # Maintainer: Thomas Marchand <thomas@thomas.md>
+          pkgname=shard-launcher-bin
+          pkgver=${VERSION}
+          pkgrel=1
+          pkgdesc="A minimal, content-addressed Minecraft launcher (Desktop App)"
+          arch=('x86_64')
+          url="https://shard.thomas.md"
+          license=('MIT')
+          depends=('webkit2gtk-4.1' 'libappindicator-gtk3')
+          provides=('shard-launcher')
+          conflicts=('shard-launcher')
+          source=("https://github.com/th0rgal/shard/releases/download/v\${pkgver}/shard-launcher-linux-x64.deb")
+          sha256sums=('${DESKTOP_SHA}')
+
+          package() {
+              bsdtar -xf data.tar.* -C "\${pkgdir}/"
+          }
+          EOF
+
+      - name: Publish shard to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: shard
+          pkgbuild: shard/PKGBUILD
+          commit_username: 'Thomas Marchand'
+          commit_email: 'thomas@thomas.md'
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ steps.release.outputs.tag }}"
+
+      - name: Publish shard-launcher-bin to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: shard-launcher-bin
+          pkgbuild: shard-launcher-bin/PKGBUILD
+          commit_username: 'Thomas Marchand'
+          commit_email: 'thomas@thomas.md'
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ steps.release.outputs.tag }}"
+
   flathub:
     if: ${{ secrets.FLATHUB_TOKEN != '' }}
     runs-on: ubuntu-latest
