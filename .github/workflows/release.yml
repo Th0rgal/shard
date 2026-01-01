@@ -47,7 +47,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: './launcher -> target'
+          workspaces: '. -> target'
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -56,14 +56,13 @@ jobs:
           sudo apt-get install -y libssl-dev
 
       - name: Build CLI
-        working-directory: launcher
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} -p shard
 
       - name: Prepare artifact (Unix)
         if: matrix.platform != 'windows-latest'
         run: |
           mkdir -p dist
-          cp launcher/target/${{ matrix.target }}/release/shard dist/
+          cp target/${{ matrix.target }}/release/shard dist/
           cd dist && tar -czvf ../${{ matrix.artifact }}.tar.gz shard
 
       - name: Prepare artifact (Windows)
@@ -71,7 +70,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist
-          Copy-Item launcher/target/${{ matrix.target }}/release/shard.exe dist/
+          Copy-Item target/${{ matrix.target }}/release/shard.exe dist/
           Compress-Archive -Path dist/shard.exe -DestinationPath ${{ matrix.artifact }}.zip
 
       - name: Upload CLI artifact
