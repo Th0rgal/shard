@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://shard.sh";
+  const baseUrl = "https://shard.thomas.md";
 
   // Static pages
   const staticPages = [

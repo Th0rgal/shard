@@ -127,3 +127,22 @@ Shard is a minimal, clean, CLI-first Minecraft launcher focused on stability, re
 - Glassmorphism with `backdrop-filter: blur()` on elevated surfaces.
 - Accent colors: `--accent-primary` (warm amber #e8a855).
 - Border-radius scale: 4px (tiny), 6px (small), 8px (medium), 10px (standard), 12px (large).
+
+## Releasing
+
+Releases are automated via `.github/workflows/release.yml`. Push a tag to trigger:
+
+```bash
+git tag v0.1.2 && git push origin v0.1.2
+```
+
+Artifacts produced:
+- **CLI**: `shard-cli-{macos-arm64,macos-x64,windows-x64,linux-x64}.{tar.gz,zip}`
+- **Desktop**: `shard-launcher-{platform}.{dmg,msi,exe,AppImage,deb}`
+
+Package manager templates are in `packaging/` (Winget, Scoop, AUR, Flathub).
+Homebrew tap: [th0rgal/homebrew-shard](https://github.com/th0rgal/homebrew-shard)
+
+## Links
+- Website: https://shard.thomas.md
+- Repository: https://github.com/th0rgal/shard

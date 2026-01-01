@@ -2,6 +2,13 @@
 name = "shard"
 version = "0.1.0"
 edition = "2024"
+description = "A minimal, content-addressed Minecraft launcher"
+license = "MIT"
+repository = "https://github.com/th0rgal/shard"
+homepage = "https://shard.thomas.md"
+keywords = ["minecraft", "launcher", "gaming", "modrinth", "curseforge"]
+categories = ["command-line-utilities", "games"]
+readme = "../README.md"
 
 [dependencies]
 anyhow = "1.0.100"

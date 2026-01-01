@@ -1,6 +1,6 @@
-# Shard Launcher - https://shard.sh
+# Shard Launcher - https://shard.thomas.md
 User-agent: *
 Allow: /
 
 # Sitemap location
-Sitemap: https://shard.sh/sitemap.xml
+Sitemap: https://shard.thomas.md/sitemap.xml

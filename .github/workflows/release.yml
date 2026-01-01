@@ -14,27 +14,93 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  # Build CLI binaries for all platforms
+  build-cli:
     strategy:
       fail-fast: false
       matrix:
         include:
-          # macOS ARM (Apple Silicon)
           - platform: macos-latest
             target: aarch64-apple-darwin
-            name: macOS-arm64
-          # macOS Intel (cross-compiled from ARM runner)
+            artifact: shard-cli-macos-arm64
           - platform: macos-latest
             target: x86_64-apple-darwin
-            name: macOS-x64
-          # Windows
+            artifact: shard-cli-macos-x64
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            name: Windows-x64
-          # Linux
+            artifact: shard-cli-windows-x64
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            name: Linux-x64
+            artifact: shard-cli-linux-x64
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './launcher -> target'
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+
+      - name: Build CLI
+        working-directory: launcher
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          mkdir -p dist
+          cp launcher/target/${{ matrix.target }}/release/shard dist/
+          cd dist && tar -czvf ../${{ matrix.artifact }}.tar.gz shard
+
+      - name: Prepare artifact (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item launcher/target/${{ matrix.target }}/release/shard.exe dist/
+          Compress-Archive -Path dist/shard.exe -DestinationPath ${{ matrix.artifact }}.zip
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+          if-no-files-found: ignore
+
+  # Build desktop app for all platforms
+  build-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            name: macos-arm64
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            name: macos-x64
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x64
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
 
     runs-on: ${{ matrix.platform }}
 
@@ -76,37 +142,111 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS code signing & notarization
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Windows code signing
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Shard ${{ github.ref_name }}'
-          releaseBody: |
-            ## Downloads
+          args: --target ${{ matrix.target }}
+
+      - name: Rename artifacts for clarity
+        shell: bash
+        run: |
+          mkdir -p renamed-artifacts
+          # Find and rename desktop artifacts with clear names
+          if [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*.dmg" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.dmg \; 2>/dev/null || true
+          elif [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*.msi" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.msi \; 2>/dev/null || true
+            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*-setup.exe" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}-setup.exe \; 2>/dev/null || true
+          elif [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
+            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*.AppImage" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.AppImage \; 2>/dev/null || true
+            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*.deb" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.deb \; 2>/dev/null || true
+          fi
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          path: renamed-artifacts/*
+          if-no-files-found: ignore
+
+  # Create the GitHub release with all artifacts
+  release:
+    needs: [build-cli, build-desktop]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release-files
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.dmg" -o -name "*.msi" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp {} release-files/ \;
+          ls -la release-files/
+
+      - name: Generate checksums
+        working-directory: release-files
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: Shard ${{ github.ref_name }}
+          body: |
+            ## Desktop App (Shard Launcher)
 
             | Platform | Download |
             |----------|----------|
-            | macOS (Apple Silicon) | `.dmg` (arm64) |
-            | macOS (Intel) | `.dmg` (x64) |
-            | Windows | `.msi` or `.exe` |
-            | Linux | `.AppImage` or `.deb` |
+            | macOS (Apple Silicon) | [`shard-launcher-macos-arm64.dmg`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-launcher-macos-arm64.dmg) |
+            | macOS (Intel) | [`shard-launcher-macos-x64.dmg`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-launcher-macos-x64.dmg) |
+            | Windows (installer) | [`shard-launcher-windows-x64.msi`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-launcher-windows-x64.msi) |
+            | Windows (setup) | [`shard-launcher-windows-x64-setup.exe`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-launcher-windows-x64-setup.exe) |
+            | Linux (AppImage) | [`shard-launcher-linux-x64.AppImage`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-launcher-linux-x64.AppImage) |
+            | Linux (Debian) | [`shard-launcher-linux-x64.deb`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-launcher-linux-x64.deb) |
 
-            ### Installation
+            ## CLI
 
-            **macOS**: Open the `.dmg` and drag Shard to Applications.
+            | Platform | Download |
+            |----------|----------|
+            | macOS (Apple Silicon) | [`shard-cli-macos-arm64.tar.gz`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-cli-macos-arm64.tar.gz) |
+            | macOS (Intel) | [`shard-cli-macos-x64.tar.gz`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-cli-macos-x64.tar.gz) |
+            | Windows | [`shard-cli-windows-x64.zip`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-cli-windows-x64.zip) |
+            | Linux | [`shard-cli-linux-x64.tar.gz`](https://github.com/th0rgal/shard/releases/download/${{ github.ref_name }}/shard-cli-linux-x64.tar.gz) |
 
-            **Windows**: Run the `.msi` installer or portable `.exe`.
+            ## Installation
+
+            ### Desktop App
+
+            **macOS**: Download the `.dmg`, open it, and drag Shard to Applications.
+
+            **Windows**: Run the `.msi` installer or the setup `.exe`.
 
             **Linux**: Make the `.AppImage` executable (`chmod +x`) and run, or install the `.deb` package.
-          releaseDraft: true
-          prerelease: false
-          args: --target ${{ matrix.target }}
+
+            ### CLI
+
+            **macOS/Linux**:
+            ```bash
+            # Extract and move to PATH
+            tar -xzf shard-cli-*.tar.gz
+            sudo mv shard /usr/local/bin/
+            ```
+
+            **Windows**: Extract the `.zip` and add `shard.exe` to your PATH.
+
+            ## Checksums
+
+            See `SHA256SUMS.txt` for file integrity verification.
+          files: release-files/*

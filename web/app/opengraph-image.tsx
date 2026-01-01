@@ -148,7 +148,7 @@ export default async function Image() {
             letterSpacing: "0.05em",
           }}
         >
-          shard.sh
+          shard.thomas.md
         </div>
       </div>
     ),

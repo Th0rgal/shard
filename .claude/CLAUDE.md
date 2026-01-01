@@ -240,3 +240,55 @@ cd web && bun run dev
 # Website tests (Playwright)
 cd web && bun run test
 ```
+
+## Releasing
+
+### Release Workflow
+
+Releases are automated via `.github/workflows/release.yml`. Pushing a tag triggers the build:
+
+```bash
+# Create and push a release tag
+git tag v0.1.2
+git push origin v0.1.2
+```
+
+The workflow builds:
+- **CLI**: `shard-cli-{platform}.{tar.gz,zip}` for macOS (arm64/x64), Windows, Linux
+- **Desktop**: `shard-launcher-{platform}.{dmg,msi,exe,AppImage,deb}`
+- **Checksums**: `SHA256SUMS.txt`
+
+### Release Artifacts
+
+| Component | Platforms | Formats |
+|-----------|-----------|---------|
+| CLI | macOS ARM/Intel, Windows, Linux | `.tar.gz` (Unix), `.zip` (Windows) |
+| Desktop | macOS ARM/Intel | `.dmg` |
+| Desktop | Windows | `.msi`, `-setup.exe` |
+| Desktop | Linux | `.AppImage`, `.deb` |
+
+### Package Managers
+
+| Manager | Package | Repository |
+|---------|---------|------------|
+| **Homebrew** | CLI + Desktop | [th0rgal/homebrew-shard](https://github.com/th0rgal/homebrew-shard) |
+| **Winget** | Desktop | Template in `packaging/winget/` |
+| **Scoop** | CLI | Template in `packaging/scoop/` |
+| **AUR** | CLI + Desktop | Templates in `packaging/aur/` |
+| **Flathub** | Desktop | Template in `packaging/flathub/` |
+
+### Post-Release Checklist
+
+1. Download `SHA256SUMS.txt` from the release
+2. Update Homebrew tap with new version and hashes
+3. Submit Winget PR to `microsoft/winget-pkgs`
+4. Update Scoop bucket (if created)
+5. Update AUR packages
+6. Update Flathub manifest (if submitted)
+
+### Links
+
+- **Website**: https://shard.thomas.md
+- **Repository**: https://github.com/th0rgal/shard
+- **Releases**: https://github.com/th0rgal/shard/releases
+- **Homebrew Tap**: https://github.com/th0rgal/homebrew-shard

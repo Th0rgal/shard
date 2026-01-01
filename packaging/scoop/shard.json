@@ -1,0 +1,15 @@
+{
+    "version": "0.1.1",
+    "description": "A minimal, content-addressed Minecraft launcher (CLI)",
+    "homepage": "https://shard.thomas.md",
+    "license": "MIT",
+    "url": "https://github.com/th0rgal/shard/releases/download/v0.1.1/shard-cli-windows-x64.zip",
+    "hash": "PLACEHOLDER_SHA256",
+    "bin": "shard.exe",
+    "checkver": {
+        "github": "https://github.com/th0rgal/shard"
+    },
+    "autoupdate": {
+        "url": "https://github.com/th0rgal/shard/releases/download/v$version/shard-cli-windows-x64.zip"
+    }
+}

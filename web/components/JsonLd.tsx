@@ -5,7 +5,7 @@ export function JsonLd() {
     name: "Shard Launcher",
     description:
       "A minimal, content-addressed Minecraft launcher focused on stability and reproducibility. One library. Infinite profiles.",
-    url: "https://shard.sh",
+    url: "https://shard.thomas.md",
     applicationCategory: "GameApplication",
     operatingSystem: ["macOS", "Windows", "Linux"],
     offers: {
@@ -18,7 +18,7 @@ export function JsonLd() {
       name: "Thomas Marchand",
       url: "https://thomas.md",
     },
-    downloadUrl: "https://shard.sh/docs/getting-started",
+    downloadUrl: "https://shard.thomas.md/docs/getting-started",
     keywords: [
       "Minecraft",
       "launcher",
@@ -43,9 +43,9 @@ export function JsonLd() {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "Shard",
-    url: "https://shard.sh",
-    logo: "https://shard.sh/icon-512.png",
-    sameAs: ["https://github.com/shard-org/shard"],
+    url: "https://shard.thomas.md",
+    logo: "https://shard.thomas.md/icon-512.png",
+    sameAs: ["https://github.com/th0rgal/shard"],
   };
 
   return (

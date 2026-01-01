@@ -4,7 +4,7 @@ use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 
 const API_BASE: &str = "https://api.modrinth.com/v2";
-const USER_AGENT_VALUE: &str = "shard-launcher/1.0 (https://github.com/oraxen/shard)";
+const USER_AGENT_VALUE: &str = "shard-launcher/1.0 (https://github.com/th0rgal/shard)";
 
 /// Project types on Modrinth
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

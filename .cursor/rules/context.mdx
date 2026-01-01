@@ -110,6 +110,24 @@ The UI uses macOS-inspired glassmorphism:
 - Text colors: `--text-primary`, `--text-secondary`, `--text-muted`
 - Geist Sans/Mono fonts
 
+## Releasing
+
+Releases are automated via `.github/workflows/release.yml`. Push a tag to trigger:
+
+```bash
+git tag v0.1.2 && git push origin v0.1.2
+```
+
+Artifacts:
+- **CLI**: `shard-cli-{platform}.{tar.gz,zip}`
+- **Desktop**: `shard-launcher-{platform}.{dmg,msi,exe,AppImage,deb}`
+
+Package manager templates in `packaging/`. Homebrew tap: `th0rgal/homebrew-shard`.
+
+## Links
+- Website: https://shard.thomas.md
+- Repository: https://github.com/th0rgal/shard
+
 ## Sync Note
 
 Keep aligned with `.claude/CLAUDE.md` and `.codex/CODEX.md`.
