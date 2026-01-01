@@ -158,14 +158,15 @@ jobs:
         run: |
           mkdir -p renamed-artifacts
           # Find and rename desktop artifacts with clear names
+          # Note: tauri-action uses workspace root target dir, not desktop/src-tauri/target
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
-            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*.dmg" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.dmg \; 2>/dev/null || true
+            find target/${{ matrix.target }}/release/bundle -name "*.dmg" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.dmg \; 2>/dev/null || true
           elif [ "${{ matrix.platform }}" = "windows-latest" ]; then
-            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*.msi" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.msi \; 2>/dev/null || true
-            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*-setup.exe" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}-setup.exe \; 2>/dev/null || true
+            find target/${{ matrix.target }}/release/bundle -name "*.msi" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.msi \; 2>/dev/null || true
+            find target/${{ matrix.target }}/release/bundle -name "*-setup.exe" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}-setup.exe \; 2>/dev/null || true
           elif [ "${{ matrix.platform }}" = "ubuntu-22.04" ]; then
-            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*.AppImage" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.AppImage \; 2>/dev/null || true
-            find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -name "*.deb" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.deb \; 2>/dev/null || true
+            find target/${{ matrix.target }}/release/bundle -name "*.AppImage" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.AppImage \; 2>/dev/null || true
+            find target/${{ matrix.target }}/release/bundle -name "*.deb" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.deb \; 2>/dev/null || true
           fi
 
       - name: Upload desktop artifacts
