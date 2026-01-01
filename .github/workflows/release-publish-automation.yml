@@ -64,20 +64,20 @@ from pathlib import Path
 version = "${VERSION}"
 tag = "${TAG}"
 sha = "${DEB_HASH}"
-manifest = Path("sh.shard.launcher.yml")
+manifest = Path("md.thomas.shard.launcher.yml")
 text = manifest.read_text()
 text = re.sub(r"url: .*shard-launcher-linux-x64\.deb", f"url: https://github.com/th0rgal/shard/releases/download/{tag}/shard-launcher-linux-x64.deb", text)
 text = re.sub(r"sha256: [0-9A-Fa-f]+", f"sha256: {sha}", text)
 manifest.write_text(text)
 
-meta = Path("sh.shard.launcher.metainfo.xml")
+meta = Path("md.thomas.shard.launcher.metainfo.xml")
 meta_text = meta.read_text()
 release_entry = f"\n    <release version=\"{version}\" date=\"{DATE}\">\n      <description>\n        <p>Release {version}</p>\n      </description>\n    </release>"
 meta_text = meta_text.replace("<releases>", "<releases>" + release_entry)
 meta.write_text(meta_text)
 PY
 
-          git add sh.shard.launcher.yml sh.shard.launcher.metainfo.xml
+          git add md.thomas.shard.launcher.yml md.thomas.shard.launcher.metainfo.xml
           git -c user.name="github-actions" -c user.email="github-actions@github.com" commit -m "Update Shard Launcher to ${VERSION}"
           git push
 
