@@ -30,7 +30,7 @@ function updateCargoVersion(filePath, version) {
   const blockEnd = nextHeaderIndex === -1 ? contents.length : nextHeaderIndex;
   const packageBlock = contents.slice(packageIndex, blockEnd);
   const updatedBlock = packageBlock.replace(
-    /^version\\s*=\\s*\".*\"$/m,
+    /^\s*version\s*=\s*\".*\"\s*$/m,
     `version = \"${version}\"`
   );
 
