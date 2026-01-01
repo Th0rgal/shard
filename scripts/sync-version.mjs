@@ -29,15 +29,14 @@ function updateCargoVersion(filePath, version) {
   const nextHeaderIndex = contents.indexOf("\n[", packageIndex + 1);
   const blockEnd = nextHeaderIndex === -1 ? contents.length : nextHeaderIndex;
   const packageBlock = contents.slice(packageIndex, blockEnd);
-  const versionPattern = /^\s*version\s*=\s*\".*\"\s*$/m;
+  const versionPattern = /^(\s*version\s*=\s*\")([^\"]+)(\"[^\r\n]*)(\r?\n|$)/m;
   if (!versionPattern.test(packageBlock)) {
     throw new Error(`Missing version field in [package] section of ${filePath}`);
   }
 
-  const updatedBlock = packageBlock.replace(
-    versionPattern,
-    `version = \"${version}\"`
-  );
+  const updatedBlock = packageBlock.replace(versionPattern, (match, prefix, _oldVersion, suffix, lineEnding) => {
+    return `${prefix}${version}${suffix}${lineEnding ?? ""}`;
+  });
 
   const updatedContents = `${contents.slice(0, packageIndex)}${updatedBlock}${contents.slice(blockEnd)}`;
   if (updatedContents !== contents) {

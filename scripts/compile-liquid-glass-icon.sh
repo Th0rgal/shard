@@ -6,6 +6,11 @@ ICON_SRC="${ROOT_DIR}/desktop/src-tauri/icons/shard.icon"
 OUT_DIR="${ROOT_DIR}/desktop/src-tauri/icons/.compiled-icon"
 ASSETS_CAR="${ROOT_DIR}/desktop/src-tauri/icons/Assets.car"
 
+if [[ -f "${ASSETS_CAR}" && ( "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ) ]]; then
+  echo "Liquid Glass icon already compiled; using ${ASSETS_CAR}"
+  exit 0
+fi
+
 if ! command -v xcrun >/dev/null 2>&1; then
   echo "error: xcrun not found (Xcode command line tools required)" >&2
   exit 1
