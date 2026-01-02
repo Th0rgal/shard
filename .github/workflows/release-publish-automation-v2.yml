@@ -1,4 +1,5 @@
 name: Release publish automation
+# Publishes to AUR, Flathub, and Winget when a release is published
 
 on:
   release:
