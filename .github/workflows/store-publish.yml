@@ -396,7 +396,7 @@ jobs:
           DATE="${{ steps.release.outputs.date }}"
           DEB_HASH="${{ steps.hashes.outputs.deb_hash }}"
 
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/Th0rgal/flathub.git" flathub-repo
+          git clone --branch md.thomas.shard.launcher "https://x-access-token:${GH_TOKEN}@github.com/Th0rgal/flathub.git" flathub-repo
           cd flathub-repo
 
           # Update manifest
@@ -491,11 +491,13 @@ jobs:
           git -c user.name="github-actions" -c user.email="github-actions@github.com" commit -m "Add Shard Launcher ${VERSION}"
           git push -u origin "$BRANCH" --force
 
-          # Check if PR already exists
+          # Check if PR already exists before trying to create
           FORK_OWNER="${WINGET_FORK%%/*}"
-          EXISTING_PR=$(gh pr list --repo "$WINGET_BASE" --head "${FORK_OWNER}:$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
-          if [ -n "$EXISTING_PR" ]; then
-            echo "PR #$EXISTING_PR already exists for this version"
+          EXISTING_PR=$(gh pr list --repo "$WINGET_BASE" --head "${FORK_OWNER}:$BRANCH" --json number,url --jq '.[0]' 2>/dev/null || true)
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            PR_URL=$(echo "$EXISTING_PR" | jq -r '.url')
+            PR_NUM=$(echo "$EXISTING_PR" | jq -r '.number')
+            echo "PR #$PR_NUM already exists for this version: $PR_URL"
             exit 0
           fi
 
