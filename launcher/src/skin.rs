@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use reqwest::blocking::{Client, Response};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const MC_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 const MC_SKINS_URL: &str = "https://api.minecraftservices.com/minecraft/profile/skins";
@@ -259,4 +259,95 @@ pub fn get_cape_url(uuid: &str) -> String {
     // returns just the skin texture, not cape. For fallback cape URL,
     // we'll use a placeholder that won't error (returns 404 gracefully)
     format!("https://mc-heads.net/cape/{}", normalize_uuid(uuid))
+}
+
+/// Download a skin texture from a URL and cache it to the store
+/// Returns the path to the cached file
+pub fn download_and_cache_skin(url: &str, store_path: &Path) -> Result<PathBuf> {
+    use sha2::{Sha256, Digest};
+
+    let client = Client::new();
+
+    // Normalize URL (http -> https)
+    let url = if let Some(stripped) = url.strip_prefix("http://") {
+        format!("https://{}", stripped)
+    } else {
+        url.to_string()
+    };
+
+    let resp = client
+        .get(&url)
+        .send()
+        .with_context(|| format!("failed to fetch skin from {}", url))?;
+
+    if !resp.status().is_success() {
+        bail!("failed to download skin: {} - {}", resp.status(), url);
+    }
+
+    let bytes = resp.bytes().context("failed to read skin bytes")?;
+
+    // Calculate SHA-256 hash
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let hash = hasher.finalize();
+    let hash_hex = format!("{:x}", hash);
+
+    // Ensure store directory exists
+    fs::create_dir_all(store_path)
+        .with_context(|| format!("failed to create skin store: {}", store_path.display()))?;
+
+    // Write to store
+    let dest_path = store_path.join(&hash_hex);
+    if !dest_path.exists() {
+        fs::write(&dest_path, &bytes)
+            .with_context(|| format!("failed to write skin to {}", dest_path.display()))?;
+    }
+
+    Ok(dest_path)
+}
+
+/// Download a cape texture from a URL and cache it to the store
+/// Returns the path to the cached file, or None if cape not available
+pub fn download_and_cache_cape(url: &str, store_path: &Path) -> Result<Option<PathBuf>> {
+    use sha2::{Sha256, Digest};
+
+    let client = Client::new();
+
+    // Normalize URL (http -> https)
+    let url = if let Some(stripped) = url.strip_prefix("http://") {
+        format!("https://{}", stripped)
+    } else {
+        url.to_string()
+    };
+
+    let resp = client
+        .get(&url)
+        .send()
+        .with_context(|| format!("failed to fetch cape from {}", url))?;
+
+    // Cape might not exist (404 is common)
+    if !resp.status().is_success() {
+        return Ok(None);
+    }
+
+    let bytes = resp.bytes().context("failed to read cape bytes")?;
+
+    // Calculate SHA-256 hash
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let hash = hasher.finalize();
+    let hash_hex = format!("{:x}", hash);
+
+    // Ensure store directory exists
+    fs::create_dir_all(store_path)
+        .with_context(|| format!("failed to create cape store: {}", store_path.display()))?;
+
+    // Write to store
+    let dest_path = store_path.join(&hash_hex);
+    if !dest_path.exists() {
+        fs::write(&dest_path, &bytes)
+            .with_context(|| format!("failed to write cape to {}", dest_path.display()))?;
+    }
+
+    Ok(Some(dest_path))
 }

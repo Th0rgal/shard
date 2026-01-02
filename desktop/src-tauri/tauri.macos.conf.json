@@ -3,6 +3,24 @@
     "beforeBuildCommand": "bash ../scripts/compile-liquid-glass-icon.sh && bun run build",
     "beforeBundleCommand": "bash ../scripts/compile-liquid-glass-icon.sh"
   },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "transparent": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 18,
+          "y": 20
+        },
+        "windowEffects": {
+          "effects": ["sidebar"],
+          "state": "followsWindowActiveState"
+        }
+      }
+    ]
+  },
   "bundle": {
     "resources": {
       "icons/Assets.car": "Assets.car"

@@ -25,6 +25,8 @@ use shard::skin::{
     set_cape,
     hide_cape,
     SkinVariant,
+    download_and_cache_skin,
+    download_and_cache_cape,
 };
 use shard::store::{ContentKind, store_content};
 use shard::template::{Template, list_templates, load_template, init_builtin_templates};
@@ -500,16 +502,45 @@ pub fn get_account_info_cmd(id: Option<String>) -> Result<AccountInfo, String> {
 
     let profile = get_mc_profile(&account.minecraft.access_token).ok();
 
-    let (skin_url, cape_url) = if let Some(ref profile) = profile {
-        let skin_url = get_active_skin(profile)
-            .map(|skin| normalize_texture_url(&skin.url))
-            .unwrap_or_else(|| get_skin_url(&account.uuid));
-        let cape_url = get_active_cape(profile)
-            .map(|cape| normalize_texture_url(&cape.url))
-            .unwrap_or_else(|| get_cape_url(&account.uuid));
-        (skin_url, cape_url)
+    // Get the skin URL from the profile, or fallback to mc-heads.net
+    let raw_skin_url = if let Some(ref profile) = profile {
+        get_active_skin(profile)
+            .map(|skin| skin.url.clone())
+            .unwrap_or_else(|| get_skin_url(&account.uuid))
     } else {
-        (get_skin_url(&account.uuid), get_cape_url(&account.uuid))
+        get_skin_url(&account.uuid)
+    };
+
+    // Get the cape URL from the profile
+    let raw_cape_url = if let Some(ref profile) = profile {
+        get_active_cape(profile)
+            .map(|cape| cape.url.clone())
+    } else {
+        None
+    };
+
+    // Download and cache the skin to local store, return asset:// URL
+    let skin_url = match download_and_cache_skin(&raw_skin_url, &paths.store_skins) {
+        Ok(cached_path) => {
+            // Return as asset:// URL for Tauri to serve
+            format!("asset://localhost/{}", cached_path.to_string_lossy().replace('\\', "/"))
+        }
+        Err(_) => {
+            // Fallback to mc-heads.net which has CORS support
+            get_skin_url(&account.uuid)
+        }
+    };
+
+    // Download and cache the cape if available
+    let cape_url = if let Some(ref url) = raw_cape_url {
+        match download_and_cache_cape(url, &paths.store_skins) {
+            Ok(Some(cached_path)) => {
+                format!("asset://localhost/{}", cached_path.to_string_lossy().replace('\\', "/"))
+            }
+            _ => get_cape_url(&account.uuid)
+        }
+    } else {
+        get_cape_url(&account.uuid)
     };
 
     Ok(AccountInfo {
@@ -521,14 +552,6 @@ pub fn get_account_info_cmd(id: Option<String>) -> Result<AccountInfo, String> {
         cape_url,
         profile,
     })
-}
-
-fn normalize_texture_url(url: &str) -> String {
-    if let Some(stripped) = url.strip_prefix("http://") {
-        format!("https://{}", stripped)
-    } else {
-        url.to_string()
-    }
 }
 
 #[tauri::command]
