@@ -330,8 +330,16 @@ export function AccountView({ onAddAccount }: AccountViewProps) {
 
   const activeSkin = info?.profile?.skins?.find((s) => s.state === "ACTIVE");
   const activeCape = info?.profile?.capes?.find((c) => c.state === "ACTIVE");
-  const activeSkinUrl = activeSkin?.url || info?.skin_url || "";
-  const activeCapeUrl = activeCape?.url ?? (info?.profile ? null : info?.cape_url ?? null);
+  const normalizeTextureUrl = (url?: string | null) => {
+    if (!url) return null;
+    return url.startsWith("http://") ? url.replace("http://", "https://") : url;
+  };
+  const activeSkinUrl = normalizeTextureUrl(activeSkin?.url ?? info?.skin_url) ?? "";
+  const activeCapeUrl = activeCape
+    ? normalizeTextureUrl(activeCape.url)
+    : info?.profile
+      ? null
+      : normalizeTextureUrl(info?.cape_url ?? null);
 
   // Get avatar URL - use skin texture directly for active account, mc-heads for others
   const getAvatarUrl = (uuid: string, skinUrl?: string) => {

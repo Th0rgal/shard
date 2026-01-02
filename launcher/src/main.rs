@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use reqwest::blocking::Client;
+use reqwest::header::CONTENT_TYPE;
 use semver::Version;
 use serde::Deserialize;
 use shard::accounts::{load_accounts, remove_account, save_accounts, set_active};
@@ -25,7 +26,7 @@ use shard::profile::{
 };
 use shard::skin::{
     get_active_cape, get_active_skin, get_avatar_url, get_body_url, get_profile as get_mc_profile,
-    hide_cape, reset_skin, set_cape, set_skin_url, upload_skin, SkinVariant,
+    get_skin_url, hide_cape, reset_skin, set_cape, set_skin_url, upload_skin, SkinVariant,
 };
 use shard::store::{ContentKind, store_content};
 use shard::template::{
@@ -33,6 +34,7 @@ use shard::template::{
     ContentSource, Template, TemplateLoader, TemplateRuntime,
 };
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -276,6 +278,15 @@ enum SkinCommand {
         /// Account to modify (default: active)
         #[arg(long)]
         account: Option<String>,
+    },
+    /// Check the active skin URL and download headers
+    Check {
+        /// Account to query (default: active)
+        #[arg(long)]
+        account: Option<String>,
+        /// Save the skin PNG to a file
+        #[arg(long)]
+        save: Option<PathBuf>,
     },
 }
 
@@ -931,6 +942,14 @@ fn parse_version(value: &str) -> Result<Version> {
     Version::parse(trimmed).with_context(|| format!("invalid version: {value}"))
 }
 
+fn normalize_texture_url(url: &str) -> String {
+    if let Some(stripped) = url.strip_prefix("http://") {
+        format!("https://{}", stripped)
+    } else {
+        url.to_string()
+    }
+}
+
 fn handle_pack_command(paths: &Paths, kind: ContentKind, command: PackCommand) -> Result<()> {
     match command {
         PackCommand::Add {
@@ -1158,6 +1177,53 @@ fn handle_skin_command(paths: &Paths, command: SkinCommand) -> Result<()> {
 
             reset_skin(&acc.minecraft.access_token)?;
             println!("reset skin for {}", acc.username);
+        }
+        SkinCommand::Check { account, save } => {
+            let target = account
+                .or_else(|| accounts.active.clone())
+                .context("no account selected")?;
+            let acc = accounts
+                .accounts
+                .iter()
+                .find(|a| a.uuid == target || a.username.to_lowercase() == target.to_lowercase())
+                .context("account not found")?;
+
+            let profile = get_mc_profile(&acc.minecraft.access_token).ok();
+            let skin_url = profile
+                .as_ref()
+                .and_then(get_active_skin)
+                .map(|skin| skin.url.clone())
+                .unwrap_or_else(|| get_skin_url(&acc.uuid));
+            let normalized_url = normalize_texture_url(&skin_url);
+
+            println!("account: {} ({})", acc.username, acc.uuid);
+            println!("skin url: {skin_url}");
+            println!("normalized: {normalized_url}");
+
+            let client = Client::builder()
+                .user_agent(format!("ShardCLI/{}", env!("CARGO_PKG_VERSION")))
+                .build()?;
+            let response = client
+                .get(&normalized_url)
+                .send()
+                .with_context(|| format!("failed to GET {normalized_url}"))?;
+            let status = response.status();
+            let headers = response.headers().clone();
+            let bytes = response.bytes()?;
+
+            println!("status: {status}");
+            if let Some(content_type) = headers.get(CONTENT_TYPE) {
+                if let Ok(value) = content_type.to_str() {
+                    println!("content-type: {value}");
+                }
+            }
+            println!("bytes: {}", bytes.len());
+
+            if let Some(path) = save {
+                fs::write(&path, &bytes)
+                    .with_context(|| format!("failed to write {}", path.display()))?;
+                println!("saved: {}", path.display());
+            }
         }
     }
     Ok(())
