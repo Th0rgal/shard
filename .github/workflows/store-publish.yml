@@ -1,24 +1,34 @@
-name: Publish to stores
+name: Store publish
 # Publishes to AUR, Flathub, and Winget when a release is published
 
 on:
   release:
-    types: [published, released]
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
         description: "Release tag to publish (e.g. v0.1.6)"
         required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   aur:
-    if: ${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Check secret
+        id: check
+        run: |
+          if [ -z "${{ secrets.AUR_SSH_PRIVATE_KEY }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Collect release info
+        if: steps.check.outputs.skip != 'true'
         id: release
         shell: bash
         run: |
@@ -29,6 +39,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Download checksums
+        if: steps.check.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -36,6 +47,7 @@ jobs:
           curl -sL "https://github.com/th0rgal/shard/releases/download/${TAG}/SHA256SUMS.txt" -o SHA256SUMS.txt
 
       - name: Prepare shard PKGBUILD
+        if: steps.check.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -47,25 +59,28 @@ jobs:
           fi
 
           mkdir -p shard
-          cat > shard/PKGBUILD << EOF
+          cat > shard/PKGBUILD << 'PKGEOF'
           # Maintainer: Thomas Marchand <thomas@thomas.md>
           pkgname=shard
-          pkgver=${VERSION}
+          pkgver=PKGVER_PLACEHOLDER
           pkgrel=1
           pkgdesc="A minimal, content-addressed Minecraft launcher (CLI)"
           arch=('x86_64')
           url="https://shard.thomas.md"
           license=('MIT')
           depends=('gcc-libs')
-          source=("https://github.com/th0rgal/shard/releases/download/v\${pkgver}/shard-cli-linux-x64.tar.gz")
-          sha256sums=('${CLI_SHA}')
+          source=("https://github.com/th0rgal/shard/releases/download/v${pkgver}/shard-cli-linux-x64.tar.gz")
+          sha256sums=('SHA256_PLACEHOLDER')
 
           package() {
-              install -Dm755 shard "\${pkgdir}/usr/bin/shard"
+              install -Dm755 shard "${pkgdir}/usr/bin/shard"
           }
-          EOF
+          PKGEOF
+          sed -i "s/PKGVER_PLACEHOLDER/${VERSION}/" shard/PKGBUILD
+          sed -i "s/SHA256_PLACEHOLDER/${CLI_SHA}/" shard/PKGBUILD
 
       - name: Prepare shard-launcher-bin PKGBUILD
+        if: steps.check.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -77,10 +92,10 @@ jobs:
           fi
 
           mkdir -p shard-launcher-bin
-          cat > shard-launcher-bin/PKGBUILD << EOF
+          cat > shard-launcher-bin/PKGBUILD << 'PKGEOF'
           # Maintainer: Thomas Marchand <thomas@thomas.md>
           pkgname=shard-launcher-bin
-          pkgver=${VERSION}
+          pkgver=PKGVER_PLACEHOLDER
           pkgrel=1
           pkgdesc="A minimal, content-addressed Minecraft launcher (Desktop App)"
           arch=('x86_64')
@@ -89,15 +104,18 @@ jobs:
           depends=('webkit2gtk-4.1' 'libappindicator-gtk3')
           provides=('shard-launcher')
           conflicts=('shard-launcher')
-          source=("https://github.com/th0rgal/shard/releases/download/v\${pkgver}/shard-launcher-linux-x64.deb")
-          sha256sums=('${DESKTOP_SHA}')
+          source=("https://github.com/th0rgal/shard/releases/download/v${pkgver}/shard-launcher-linux-x64.deb")
+          sha256sums=('SHA256_PLACEHOLDER')
 
           package() {
-              bsdtar -xf data.tar.* -C "\${pkgdir}/"
+              bsdtar -xf data.tar.* -C "${pkgdir}/"
           }
-          EOF
+          PKGEOF
+          sed -i "s/PKGVER_PLACEHOLDER/${VERSION}/" shard-launcher-bin/PKGBUILD
+          sed -i "s/SHA256_PLACEHOLDER/${DESKTOP_SHA}/" shard-launcher-bin/PKGBUILD
 
       - name: Publish shard to AUR
+        if: steps.check.outputs.skip != 'true'
         uses: KSXGitHub/github-actions-deploy-aur@v3
         with:
           pkgname: shard
@@ -108,6 +126,7 @@ jobs:
           commit_message: "Update to ${{ steps.release.outputs.tag }}"
 
       - name: Publish shard-launcher-bin to AUR
+        if: steps.check.outputs.skip != 'true'
         uses: KSXGitHub/github-actions-deploy-aur@v3
         with:
           pkgname: shard-launcher-bin
@@ -118,21 +137,32 @@ jobs:
           commit_message: "Update to ${{ steps.release.outputs.tag }}"
 
   flathub:
-    if: ${{ secrets.FLATHUB_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Check secret
+        id: check
+        run: |
+          if [ -z "${{ secrets.FLATHUB_TOKEN }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repo
+        if: steps.check.outputs.skip != 'true'
         uses: actions/checkout@v4
 
       - name: Collect release info
+        if: steps.check.outputs.skip != 'true'
         id: release
         shell: bash
         run: |
           set -euo pipefail
           TAG="${{ github.event.release.tag_name || inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
-          if jq -e '.release.published_at' "$GITHUB_EVENT_PATH" >/dev/null 2>&1; then
-            DATE="$(jq -r '.release.published_at' "$GITHUB_EVENT_PATH" | cut -d'T' -f1)"
+          if [ -n "${{ github.event.release.published_at }}" ]; then
+            DATE="${{ github.event.release.published_at }}"
+            DATE="${DATE%%T*}"
           else
             DATE="$(date -u +%Y-%m-%d)"
           fi
@@ -141,6 +171,7 @@ jobs:
           echo "date=${DATE}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch SHA256SUMS
+        if: steps.check.outputs.skip != 'true'
         id: hashes
         shell: bash
         run: |
@@ -155,6 +186,7 @@ jobs:
           echo "deb_hash=${DEB_HASH}" >> "$GITHUB_OUTPUT"
 
       - name: Update Flathub repo
+        if: steps.check.outputs.skip != 'true'
         shell: bash
         env:
           FLATHUB_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
@@ -170,38 +202,36 @@ jobs:
           git clone "https://x-access-token:${FLATHUB_TOKEN}@github.com/${FLATHUB_REPO}.git" flathub-repo
           cd flathub-repo
 
-          python3 - <<PY
-import re
-from pathlib import Path
+          # Update manifest
+          sed -i "s|url: .*shard-launcher-linux-x64\.deb|url: https://github.com/th0rgal/shard/releases/download/${TAG}/shard-launcher-linux-x64.deb|" md.thomas.shard.launcher.yml
+          sed -i "s|sha256: [0-9A-Fa-f]*|sha256: ${DEB_HASH}|" md.thomas.shard.launcher.yml
 
-version = "${VERSION}"
-tag = "${TAG}"
-sha = "${DEB_HASH}"
-manifest = Path("md.thomas.shard.launcher.yml")
-text = manifest.read_text()
-text = re.sub(r"url: .*shard-launcher-linux-x64\.deb", f"url: https://github.com/th0rgal/shard/releases/download/{tag}/shard-launcher-linux-x64.deb", text)
-text = re.sub(r"sha256: [0-9A-Fa-f]+", f"sha256: {sha}", text)
-manifest.write_text(text)
-
-meta = Path("md.thomas.shard.launcher.metainfo.xml")
-meta_text = meta.read_text()
-release_entry = f"\n    <release version=\"{version}\" date=\"{DATE}\">\n      <description>\n        <p>Release {version}</p>\n      </description>\n    </release>"
-meta_text = meta_text.replace("<releases>", "<releases>" + release_entry)
-meta.write_text(meta_text)
-PY
+          # Update metainfo with new release
+          RELEASE_ENTRY="    <release version=\"${VERSION}\" date=\"${DATE}\">\n      <description>\n        <p>Release ${VERSION}</p>\n      </description>\n    </release>"
+          sed -i "s|<releases>|<releases>\n${RELEASE_ENTRY}|" md.thomas.shard.launcher.metainfo.xml
 
           git add md.thomas.shard.launcher.yml md.thomas.shard.launcher.metainfo.xml
           git -c user.name="github-actions" -c user.email="github-actions@github.com" commit -m "Update Shard Launcher to ${VERSION}"
           git push
 
   winget:
-    if: ${{ secrets.WINGET_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Check secret
+        id: check
+        run: |
+          if [ -z "${{ secrets.WINGET_TOKEN }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repo
+        if: steps.check.outputs.skip != 'true'
         uses: actions/checkout@v4
 
       - name: Collect release info
+        if: steps.check.outputs.skip != 'true'
         id: release
         shell: bash
         run: |
@@ -212,6 +242,7 @@ PY
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch SHA256SUMS
+        if: steps.check.outputs.skip != 'true'
         id: hashes
         shell: bash
         run: |
@@ -226,6 +257,7 @@ PY
           echo "msi_hash=${MSI_HASH}" >> "$GITHUB_OUTPUT"
 
       - name: Update winget manifests and open PR
+        if: steps.check.outputs.skip != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
@@ -248,21 +280,10 @@ PY
           mkdir -p "$TARGET_DIR"
           cp -R "$GITHUB_WORKSPACE/packaging/winget/Th0rgal.ShardLauncher/0.1.4/." "$TARGET_DIR/"
 
-          python3 - <<PY
-import pathlib
-
-version = "${VERSION}"
-msi_hash = "${MSI_HASH}"
-tag = "${TAG}"
-
-paths = pathlib.Path("${TARGET_DIR}").glob("*.yaml")
-for path in paths:
-    text = path.read_text()
-    text = text.replace("PackageVersion: 0.1.4", f"PackageVersion: {version}")
-    text = text.replace("/download/v0.1.4/", f"/download/{tag}/")
-    text = text.replace("InstallerSha256: 5245BE2EDD1E83660B4B0F4C9B4ECFE974B94F9F64DDE570939A957B7D8938EB", f"InstallerSha256: {msi_hash}")
-    path.write_text(text)
-PY
+          # Update version and hash in manifest files
+          find "$TARGET_DIR" -name "*.yaml" -exec sed -i "s/PackageVersion: 0.1.4/PackageVersion: ${VERSION}/" {} \;
+          find "$TARGET_DIR" -name "*.yaml" -exec sed -i "s|/download/v0.1.4/|/download/${TAG}/|" {} \;
+          find "$TARGET_DIR" -name "*.yaml" -exec sed -i "s/InstallerSha256: 5245BE2EDD1E83660B4B0F4C9B4ECFE974B94F9F64DDE570939A957B7D8938EB/InstallerSha256: ${MSI_HASH}/" {} \;
 
           git add "$TARGET_DIR"
           git -c user.name="github-actions" -c user.email="github-actions@github.com" commit -m "Add Shard Launcher ${VERSION}"
