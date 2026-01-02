@@ -297,7 +297,8 @@ jobs:
           git push -u origin "$BRANCH" --force
 
           # Check if PR already exists
-          EXISTING_PR=$(gh pr list --repo "$WINGET_BASE" --head "${WINGET_FORK#*/}:$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          FORK_OWNER="${WINGET_FORK%%/*}"
+          EXISTING_PR=$(gh pr list --repo "$WINGET_BASE" --head "${FORK_OWNER}:$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           if [ -n "$EXISTING_PR" ]; then
             echo "PR #$EXISTING_PR already exists for this version"
             exit 0
@@ -305,7 +306,7 @@ jobs:
 
           gh pr create \
             --repo "$WINGET_BASE" \
-            --head "${WINGET_FORK#*/}:$BRANCH" \
+            --head "${FORK_OWNER}:$BRANCH" \
             --title "Shard Launcher ${VERSION}" \
             --body "Automated update for Shard Launcher ${VERSION}." \
             --base master
