@@ -57,6 +57,8 @@ export function ProfileView({
   const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
   const [loaderVersionsLoading, setLoaderVersionsLoading] = useState(false);
   const loaderVersionsCacheRef = useRef<Record<string, string[]>>({});
+  // Track expected loader type to avoid race conditions when switching quickly
+  const expectedLoaderTypeRef = useRef<string>("");
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -74,18 +76,24 @@ export function ProfileView({
   // Fetch loader versions for a specific loader type
   const fetchLoaderVersions = useCallback(async (loaderType: string, mcVersion: string) => {
     if (!loaderType) {
+      expectedLoaderTypeRef.current = "";
       setLoaderVersions([]);
       return;
     }
 
     // Normalize to lowercase for consistent cache keys and API calls
     const normalizedType = loaderType.toLowerCase();
+    // Track expected loader type to avoid race conditions when switching quickly
+    expectedLoaderTypeRef.current = normalizedType;
     // Create cache key including MC version for loaders that depend on it
     const cacheKey = ["forge", "neoforge"].includes(normalizedType) ? `${normalizedType}:${mcVersion}` : normalizedType;
 
     // Check cache first
     if (loaderVersionsCacheRef.current[cacheKey]) {
-      setLoaderVersions(loaderVersionsCacheRef.current[cacheKey]);
+      // Only set if this is still the expected loader type
+      if (expectedLoaderTypeRef.current === normalizedType) {
+        setLoaderVersions(loaderVersionsCacheRef.current[cacheKey]);
+      }
       return;
     }
 
@@ -96,12 +104,21 @@ export function ProfileView({
         mcVersion,
       });
       loaderVersionsCacheRef.current[cacheKey] = versions;
-      setLoaderVersions(versions);
+      // Only set if this is still the expected loader type (avoid race condition)
+      if (expectedLoaderTypeRef.current === normalizedType) {
+        setLoaderVersions(versions);
+      }
     } catch (err) {
       console.error("Failed to fetch loader versions:", err);
-      setLoaderVersions([]);
+      // Only clear if this is still the expected loader type
+      if (expectedLoaderTypeRef.current === normalizedType) {
+        setLoaderVersions([]);
+      }
     } finally {
-      setLoaderVersionsLoading(false);
+      // Only update loading state if this is still the expected loader type
+      if (expectedLoaderTypeRef.current === normalizedType) {
+        setLoaderVersionsLoading(false);
+      }
     }
   }, []);
 
