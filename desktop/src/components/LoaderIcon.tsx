@@ -17,15 +17,15 @@ interface LoaderIconProps {
  * Uses official logos where possible, with translucent styling to match the UI theme.
  */
 export function LoaderIcon({ loader, size = 18, className, style }: LoaderIconProps) {
-  // For Fabric pixel art PNG - make it white/translucent
-  // brightness(0) makes it black, then invert(1) makes it white
+  // For Fabric pixel art PNG - make it lighter while preserving detail
+  // grayscale converts to gray, brightness makes it whiter, contrast preserves texture
   const fabricStyle: CSSProperties = {
     width: size * 1.2,
     height: size * 1.2,
     objectFit: "contain",
     imageRendering: "pixelated",
-    filter: "brightness(0) invert(1)",
-    opacity: 0.6,
+    filter: "grayscale(1) brightness(1.8) contrast(0.9)",
+    opacity: 0.7,
     ...style,
   };
 
