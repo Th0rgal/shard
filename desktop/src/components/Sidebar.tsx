@@ -315,6 +315,8 @@ export function Sidebar({
   const addMenuRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  // Track adjusted position to avoid DOM manipulation that's lost on re-render
+  const [adjustedMenuPos, setAdjustedMenuPos] = useState<{ x: number; y: number } | null>(null);
 
   // Configure drag sensors with activation constraint to distinguish from clicks
   const sensors = useSensors(
@@ -381,11 +383,15 @@ export function Sidebar({
       newX = Math.max(8, newX);
       newY = Math.max(8, newY);
 
-      // Apply adjusted position
+      // Store adjusted position in state to survive re-renders
       if (newX !== contextMenuTarget.x || newY !== contextMenuTarget.y) {
-        menu.style.left = `${newX}px`;
-        menu.style.top = `${newY}px`;
+        setAdjustedMenuPos({ x: newX, y: newY });
+      } else {
+        setAdjustedMenuPos(null);
       }
+    } else {
+      // Clear adjusted position when context menu closes
+      setAdjustedMenuPos(null);
     }
   }, [contextMenuTarget]);
 
@@ -786,7 +792,10 @@ export function Sidebar({
         <div
           ref={contextMenuRef}
           className="context-menu"
-          style={{ left: contextMenuTarget.x, top: contextMenuTarget.y }}
+          style={{
+            left: adjustedMenuPos?.x ?? contextMenuTarget.x,
+            top: adjustedMenuPos?.y ?? contextMenuTarget.y,
+          }}
         >
           {contextMenuTarget.type === "profile" && (
             <>
