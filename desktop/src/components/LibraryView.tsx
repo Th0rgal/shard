@@ -221,8 +221,8 @@ export function LibraryView() {
 
     try {
       await invoke("library_add_to_profile_cmd", {
-        profile_id: selectedProfileId,
-        item_id: item.id,
+        profileId: selectedProfileId,
+        itemId: item.id,
       });
       await loadProfile(selectedProfileId);
       notify("Added to profile", `${formatContentName(item.name)} added to ${selectedProfileId}`);

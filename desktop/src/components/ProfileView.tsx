@@ -38,10 +38,7 @@ export function ProfileView({
     // Precached version data from store
     mcVersions,
     mcVersionLoading: mcVersionsLoading,
-    loaderVersions: fabricVersions,
-    loaderLoading: fabricLoading,
     precacheMcVersions,
-    precacheFabricVersions,
   } = useAppStore();
 
   const activeAccount = getActiveAccount();
@@ -56,6 +53,11 @@ export function ProfileView({
   const [saving, setSaving] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Loader versions state (fetched dynamically based on loader type)
+  const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
+  const [loaderVersionsLoading, setLoaderVersionsLoading] = useState(false);
+  const loaderVersionsCacheRef = useRef<Record<string, string[]>>({});
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -68,6 +70,38 @@ export function ProfileView({
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [expandedDropdown]);
+
+  // Fetch loader versions for a specific loader type
+  const fetchLoaderVersions = useCallback(async (loaderType: string, mcVersion: string) => {
+    if (!loaderType) {
+      setLoaderVersions([]);
+      return;
+    }
+
+    // Create cache key including MC version for loaders that depend on it
+    const cacheKey = ["forge", "neoforge"].includes(loaderType) ? `${loaderType}:${mcVersion}` : loaderType;
+
+    // Check cache first
+    if (loaderVersionsCacheRef.current[cacheKey]) {
+      setLoaderVersions(loaderVersionsCacheRef.current[cacheKey]);
+      return;
+    }
+
+    setLoaderVersionsLoading(true);
+    try {
+      const versions = await invoke<string[]>("fetch_loader_versions_cmd", {
+        loaderType,
+        mcVersion,
+      });
+      loaderVersionsCacheRef.current[cacheKey] = versions;
+      setLoaderVersions(versions);
+    } catch (err) {
+      console.error("Failed to fetch loader versions:", err);
+      setLoaderVersions([]);
+    } finally {
+      setLoaderVersionsLoading(false);
+    }
+  }, []);
 
   // Ensure versions are loaded (fallback if precache hasn't completed yet)
   const handleExpandVersion = useCallback(() => {
@@ -87,14 +121,26 @@ export function ProfileView({
       setExpandedDropdown(null);
     } else {
       setExpandedDropdown("loader");
-      setSelectedLoaderType(profile?.loader?.type || "");
+      const loaderType = profile?.loader?.type || "";
+      setSelectedLoaderType(loaderType);
       setSelectedLoaderVersion(profile?.loader?.version || "");
-      // Trigger load if not cached yet (will be instant if already cached)
-      if (fabricVersions.length === 0) {
-        void precacheFabricVersions();
+      // Fetch versions for current loader type
+      if (loaderType) {
+        void fetchLoaderVersions(loaderType, profile?.mcVersion || "");
       }
     }
-  }, [expandedDropdown, profile?.loader?.type, profile?.loader?.version, fabricVersions.length, precacheFabricVersions]);
+  }, [expandedDropdown, profile?.loader?.type, profile?.loader?.version, profile?.mcVersion, fetchLoaderVersions]);
+
+  // Fetch loader versions when loader type changes
+  const handleLoaderTypeChange = useCallback((newLoaderType: string) => {
+    setSelectedLoaderType(newLoaderType);
+    setSelectedLoaderVersion("");
+    if (newLoaderType) {
+      void fetchLoaderVersions(newLoaderType, profile?.mcVersion || "");
+    } else {
+      setLoaderVersions([]);
+    }
+  }, [fetchLoaderVersions, profile?.mcVersion]);
 
   const handleVersionSelect = async (version: string) => {
     if (!profile || version === profile.mcVersion) {
@@ -160,9 +206,9 @@ export function ProfileView({
     setTogglingPin(item.hash);
     try {
       await invoke<Profile>("set_content_pinned_cmd", {
-        profile_id: profile.id,
-        content_name: item.name,
-        content_type: contentType,
+        profileId: profile.id,
+        contentName: item.name,
+        contentType: contentType,
         pinned: !item.pinned,
       });
       await loadProfile(profile.id);
@@ -178,9 +224,9 @@ export function ProfileView({
     setTogglingEnabled(item.hash);
     try {
       await invoke<Profile>("set_content_enabled_cmd", {
-        profile_id: profile.id,
-        content_name: item.name,
-        content_type: contentType,
+        profileId: profile.id,
+        contentName: item.name,
+        contentType: contentType,
         enabled: !(item.enabled ?? true),
       });
       await loadProfile(profile.id);
@@ -199,6 +245,16 @@ export function ProfileView({
   const loaderLabel = profile.loader
     ? `${profile.loader.type} ${profile.loader.version}`
     : "Vanilla";
+
+  // Check if mods are supported (requires a mod loader)
+  const hasModLoader = !!profile.loader;
+
+  // If mods or shaders tab is selected but no loader, switch to resourcepacks
+  useEffect(() => {
+    if (!hasModLoader && (activeTab === "mods" || activeTab === "shaderpacks")) {
+      setActiveTab("resourcepacks");
+    }
+  }, [hasModLoader, activeTab, setActiveTab]);
 
   const filteredVersions = showSnapshots
     ? mcVersions
@@ -282,14 +338,7 @@ export function ProfileView({
                     <select
                       className="select select-sm"
                       value={selectedLoaderType}
-                      onChange={(e) => {
-                        setSelectedLoaderType(e.target.value);
-                        if (e.target.value === "fabric" && fabricVersions.length > 0) {
-                          setSelectedLoaderVersion(fabricVersions[0]);
-                        } else if (e.target.value === "") {
-                          setSelectedLoaderVersion("");
-                        }
-                      }}
+                      onChange={(e) => handleLoaderTypeChange(e.target.value)}
                     >
                       <option value="">Vanilla (no loader)</option>
                       <option value="fabric">Fabric</option>
@@ -298,41 +347,41 @@ export function ProfileView({
                       <option value="neoforge">NeoForge</option>
                     </select>
                   </div>
-                  {selectedLoaderType === "fabric" && (
+                  {selectedLoaderType && (
                     <div className="chip-dropdown-section">
-                      <label className="chip-dropdown-label">Fabric Version</label>
+                      <label className="chip-dropdown-label">
+                        {selectedLoaderType.charAt(0).toUpperCase() + selectedLoaderType.slice(1)} Version
+                      </label>
                       <select
                         className="select select-sm"
                         value={selectedLoaderVersion}
                         onChange={(e) => setSelectedLoaderVersion(e.target.value)}
-                        disabled={fabricLoading}
+                        disabled={loaderVersionsLoading}
                       >
-                        {fabricLoading ? (
+                        {loaderVersionsLoading ? (
                           <option>Loading...</option>
+                        ) : loaderVersions.length === 0 ? (
+                          <option value="">No versions available</option>
                         ) : (
-                          fabricVersions.map((v) => (
-                            <option key={v} value={v}>{v}</option>
-                          ))
+                          <>
+                            {!selectedLoaderVersion && <option value="">Select version...</option>}
+                            {loaderVersions.map((v) => (
+                              <option key={v} value={v}>{v}</option>
+                            ))}
+                          </>
                         )}
                       </select>
-                    </div>
-                  )}
-                  {(selectedLoaderType === "quilt" || selectedLoaderType === "forge" || selectedLoaderType === "neoforge") && (
-                    <div className="chip-dropdown-section">
-                      <label className="chip-dropdown-label">{selectedLoaderType.charAt(0).toUpperCase() + selectedLoaderType.slice(1)} Version</label>
-                      <input
-                        className="input input-sm"
-                        value={selectedLoaderVersion}
-                        onChange={(e) => setSelectedLoaderVersion(e.target.value)}
-                        placeholder="e.g., 0.20.0"
-                      />
                     </div>
                   )}
                   <div className="chip-dropdown-footer">
                     <button className="btn btn-ghost btn-sm" onClick={() => setExpandedDropdown(null)}>
                       Cancel
                     </button>
-                    <button className="btn btn-primary btn-sm" onClick={handleLoaderSave} disabled={saving}>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={handleLoaderSave}
+                      disabled={saving || (!!selectedLoaderType && !selectedLoaderVersion)}
+                    >
                       {saving ? "Saving..." : "Save"}
                     </button>
                   </div>
@@ -357,15 +406,31 @@ export function ProfileView({
       <div className="section-panel">
         <div className="content-tabs-row">
           <div className="content-tabs">
-            <button className={clsx("content-tab", activeTab === "mods" && "active")} onClick={() => setActiveTab("mods")}>
-              Mods<span className="count">{contentCounts.mods}</span>
-            </button>
             <button className={clsx("content-tab", activeTab === "resourcepacks" && "active")} onClick={() => setActiveTab("resourcepacks")}>
               Packs<span className="count">{contentCounts.resourcepacks}</span>
             </button>
-            <button className={clsx("content-tab", activeTab === "shaderpacks" && "active")} onClick={() => setActiveTab("shaderpacks")}>
-              Shaders<span className="count">{contentCounts.shaderpacks}</span>
-            </button>
+            <div
+              className={clsx("content-tab-wrapper", !hasModLoader && "disabled")}
+              data-tooltip={hasModLoader ? undefined : "Install a mod loader to enable shaders"}
+            >
+              <button
+                className={clsx("content-tab", activeTab === "shaderpacks" && "active", !hasModLoader && "disabled")}
+                onClick={() => hasModLoader && setActiveTab("shaderpacks")}
+              >
+                Shaders<span className="count">{contentCounts.shaderpacks}</span>
+              </button>
+            </div>
+            <div
+              className={clsx("content-tab-wrapper", !hasModLoader && "disabled")}
+              data-tooltip={hasModLoader ? undefined : "Install a mod loader to enable mods"}
+            >
+              <button
+                className={clsx("content-tab", activeTab === "mods" && "active", !hasModLoader && "disabled")}
+                onClick={() => hasModLoader && setActiveTab("mods")}
+              >
+                Mods<span className="count">{contentCounts.mods}</span>
+              </button>
+            </div>
           </div>
           <button
             className="btn-icon btn-add-content"

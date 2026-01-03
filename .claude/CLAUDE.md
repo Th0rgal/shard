@@ -237,6 +237,27 @@ bun run test
 7. **CSS**: Use CSS variables, maintain consistent border-radius and spacing.
 8. **Keep contexts aligned**: Update `.codex/CODEX.md` and `.cursor/rules/context.mdx` when this file changes.
 
+## Tauri Command Conventions
+
+**CRITICAL**: Tauri 2.x automatically converts Rust snake_case parameter names to camelCase on the JavaScript side.
+
+When calling Tauri commands from TypeScript/JavaScript:
+- Rust `profile_id: String` → JS `profileId: "value"`
+- Rust `item_id: i64` → JS `itemId: 123`
+- Rust `content_type: String` → JS `contentType: "mod"`
+
+**Examples:**
+```typescript
+// ✅ CORRECT - use camelCase in JS
+await invoke("remove_mod_cmd", { profileId: "my-profile", target: "hash123" });
+await invoke("library_add_to_profile_cmd", { profileId: "id", itemId: 42 });
+
+// ❌ WRONG - snake_case will fail with "missing required key" error
+await invoke("remove_mod_cmd", { profile_id: "my-profile", target: "hash123" });
+```
+
+This applies to ALL invoke calls with parameters. Always use camelCase for parameter names in the frontend.
+
 ## Testing
 
 ```bash

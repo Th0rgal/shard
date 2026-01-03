@@ -168,11 +168,11 @@ export function StoreView() {
 
     try {
       const data = await invoke<StoreVersion[]>("store_get_versions_cmd", {
-        project_id: project.id,
+        projectId: project.id,
         platform: project.platform,
-        game_version: profile?.mcVersion ?? null,
+        gameVersion: profile?.mcVersion ?? null,
         loader: profile?.loader?.type ?? null,
-        profile_id: selectedProfileId ?? null,
+        profileId: selectedProfileId ?? null,
       });
       setVersions(data);
     } catch (err) {
@@ -188,11 +188,11 @@ export function StoreView() {
     setInstalling(version.id);
     try {
       const input = {
-        profile_id: selectedProfileId,
+        profileId: selectedProfileId,
         platform: selectedProject.platform,
-        project_id: selectedProject.id,
-        version_id: version.id,
-        content_type: CATEGORY_TO_CONTENT_TYPE[category],
+        projectId: selectedProject.id,
+        versionId: version.id,
+        contentType: CATEGORY_TO_CONTENT_TYPE[category],
       };
       await invoke("store_install_cmd", { input });
       await loadProfile(selectedProfileId);
@@ -214,11 +214,11 @@ export function StoreView() {
     try {
       // Fetch versions for this project
       const versions = await invoke<StoreVersion[]>("store_get_versions_cmd", {
-        project_id: project.id,
+        projectId: project.id,
         platform: project.platform,
-        game_version: profile?.mcVersion ?? null,
+        gameVersion: profile?.mcVersion ?? null,
         loader: profile?.loader?.type ?? null,
-        profile_id: selectedProfileId,
+        profileId: selectedProfileId,
       });
 
       if (versions.length === 0) {
@@ -229,11 +229,11 @@ export function StoreView() {
       // Install the first (latest) version
       const latestVersion = versions[0];
       const input = {
-        profile_id: selectedProfileId,
+        profileId: selectedProfileId,
         platform: project.platform,
-        project_id: project.id,
-        version_id: latestVersion.id,
-        content_type: CATEGORY_TO_CONTENT_TYPE[category],
+        projectId: project.id,
+        versionId: latestVersion.id,
+        contentType: CATEGORY_TO_CONTENT_TYPE[category],
       };
       await invoke("store_install_cmd", { input });
       await loadProfile(selectedProfileId);

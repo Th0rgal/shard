@@ -20,7 +20,7 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 const MAX_LOG_ENTRIES = 2000;
 
 export function LogsView() {
-  const { selectedProfileId, notify } = useAppStore();
+  const { selectedProfileId, notify, launchStatus } = useAppStore();
   const [tab, setTab] = useState<LogTab>("latest");
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logFiles, setLogFiles] = useState<LogFile[]>([]);
@@ -30,11 +30,13 @@ export function LogsView() {
   const [filter, setFilter] = useState("");
   const [minLevel, setMinLevel] = useState<LogLevel>("info");
   const [autoScroll, setAutoScroll] = useState(true);
-  const [watching, setWatching] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastEventAtRef = useRef<number>(0);
+
+  // Game is live when it's actively running
+  const isGameRunning = launchStatus?.stage === "running";
 
   const sanitizeEventSegment = useCallback((value: string) => (
     value.replace(/[^a-zA-Z0-9\-/:_]/g, "_")
@@ -43,7 +45,7 @@ export function LogsView() {
   const loadLogFiles = useCallback(async () => {
     if (!selectedProfileId) return;
     try {
-      const files = await invoke<LogFile[]>("list_log_files_cmd", { profile_id: selectedProfileId });
+      const files = await invoke<LogFile[]>("list_log_files_cmd", { profileId: selectedProfileId });
       setLogFiles(files);
     } catch {
       setLogFiles([]);
@@ -53,7 +55,7 @@ export function LogsView() {
   const loadCrashReports = useCallback(async () => {
     if (!selectedProfileId) return;
     try {
-      const files = await invoke<LogFile[]>("list_crash_reports_cmd", { profile_id: selectedProfileId });
+      const files = await invoke<LogFile[]>("list_crash_reports_cmd", { profileId: selectedProfileId });
       setCrashReports(files);
     } catch {
       setCrashReports([]);
@@ -66,7 +68,7 @@ export function LogsView() {
     try {
       if (tab === "crashes") {
         const content = await invoke<string>("read_crash_report_cmd", {
-          profile_id: selectedProfileId,
+          profileId: selectedProfileId,
           file: file.name,
         });
         setLogs([{
@@ -116,25 +118,30 @@ export function LogsView() {
         });
 
         await invoke("start_log_watch", { profileId: selectedProfileId });
-        setWatching(true);
 
-        try {
-          const entries = await invoke<LogEntry[]>("read_logs_cmd", {
-            profileId: selectedProfileId,
-            file: null,
-            lines: MAX_LOG_ENTRIES,
-          });
-          if (!cancelled) {
-            setLogs(entries);
+        // Only load existing logs if the game is currently running
+        // Otherwise, show empty state to indicate no active session
+        if (isGameRunning) {
+          try {
+            const entries = await invoke<LogEntry[]>("read_logs_cmd", {
+              profileId: selectedProfileId,
+              file: null,
+              lines: MAX_LOG_ENTRIES,
+            });
+            if (!cancelled) {
+              setLogs(entries);
+            }
+          } catch (err) {
+            console.warn("[logs] Failed to read initial logs:", err);
           }
-        } catch (err) {
-          console.warn("[logs] Failed to read initial logs:", err);
         }
 
         pollTimerRef.current = setInterval(async () => {
           if (cancelled) return;
           const now = Date.now();
           if (now - lastEventAtRef.current < 1500) return;
+          // Only poll if game is running
+          if (!isGameRunning) return;
           try {
             const entries = await invoke<LogEntry[]>("read_logs_cmd", {
               profileId: selectedProfileId,
@@ -157,7 +164,6 @@ export function LogsView() {
 
     return () => {
       cancelled = true;
-      setWatching(false);
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
@@ -167,7 +173,7 @@ export function LogsView() {
         unlistenRef.current = null;
       }
     };
-  }, [selectedProfileId, tab]);
+  }, [selectedProfileId, tab, isGameRunning, sanitizeEventSegment]);
 
   useEffect(() => {
     if (!selectedProfileId) return;
@@ -223,7 +229,7 @@ export function LogsView() {
               <path d="M7 4v3l2 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             Live
-            {watching && <span className="logs-live-dot" />}
+            {isGameRunning && <span className="logs-live-dot" />}
           </button>
           <button
             className={clsx("logs-tab", tab === "history" && "active")}
@@ -410,7 +416,7 @@ export function LogsView() {
 
               <div className="logs-status">
                 <span>{filteredLogs.length} of {logs.length} entries</span>
-                {tab === "latest" && watching && (
+                {tab === "latest" && isGameRunning && (
                   <span className="logs-status-live">
                     <span className="logs-live-dot" />
                     Live

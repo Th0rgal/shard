@@ -14,5 +14,7 @@ export { LogsView } from "./LogsView";
 export { LibraryView } from "./LibraryView";
 export { PlatformIcon, PlatformBadge, PLATFORM_COLORS } from "./PlatformIcon";
 export type { Platform } from "./PlatformIcon";
+export { LoaderIcon } from "./LoaderIcon";
+export type { LoaderType } from "./LoaderIcon";
 
 export * from "./modals";

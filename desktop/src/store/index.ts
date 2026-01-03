@@ -119,7 +119,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeAccountSkinUrl: null,
   config: null,
   profileFilter: "",
-  activeTab: "mods",
+  activeTab: "resourcepacks",
   sidebarView: "profiles",
   activeModal: null,
   toast: null,

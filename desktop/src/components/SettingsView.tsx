@@ -137,10 +137,10 @@ export function SettingsView() {
     setApplyingUpdate(key);
     try {
       await invoke("apply_content_update_cmd", {
-        profile_id: update.profile_id,
-        content_name: update.content.name,
-        content_type: update.content_type,
-        new_version_id: update.latest_version_id,
+        profileId: update.profile_id,
+        contentName: update.content.name,
+        contentType: update.content_type,
+        newVersionId: update.latest_version_id,
       });
       notify("Update applied", `${update.content.name} updated to ${update.latest_version}`);
       await handleCheckUpdates();

@@ -136,6 +136,17 @@ cd desktop && bun install && cargo tauri build --release
 
 The CLI (`shard`) and Desktop app (`Shard Launcher.app`) are separate binaries.
 
+## Tauri Command Conventions
+
+**CRITICAL**: Tauri 2.x automatically converts Rust snake_case parameter names to camelCase on the JavaScript side.
+
+When calling Tauri commands from TypeScript/JavaScript:
+- Rust `profile_id: String` → JS `profileId: "value"`
+- Rust `item_id: i64` → JS `itemId: 123`
+- Rust `content_type: String` → JS `contentType: "mod"`
+
+Always use camelCase for parameter names in `invoke()` calls. Snake_case will fail with "missing required key" errors.
+
 ## UI Design
 - Design tokens in `desktop/src/styles.css` (warm dark palette, Geist fonts).
 - Custom CSS with CSS variables, not Tailwind.
