@@ -316,15 +316,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     const validUngrouped = profileOrg.ungrouped.filter((p) => profiles.includes(p));
 
+    // Validate favorite profile still exists
+    const validFavorite = profileOrg.favoriteProfile && profiles.includes(profileOrg.favoriteProfile)
+      ? profileOrg.favoriteProfile
+      : null;
+
     const newOrg = {
       folders: validFolders,
       ungrouped: [...validUngrouped, ...newProfiles],
+      favoriteProfile: validFavorite,
     };
 
     if (
       newProfiles.length > 0 ||
       validFolders.some((f, i) => f.profiles.length !== profileOrg.folders[i]?.profiles.length) ||
-      validUngrouped.length !== profileOrg.ungrouped.length
+      validUngrouped.length !== profileOrg.ungrouped.length ||
+      validFavorite !== profileOrg.favoriteProfile
     ) {
       set({ profileOrg: newOrg });
       saveProfileOrg(newOrg);

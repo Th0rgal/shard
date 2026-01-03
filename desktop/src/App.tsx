@@ -88,7 +88,10 @@ function App() {
   // Initial load
   useEffect(() => {
     const loadInitial = async () => {
-      await Promise.all([loadProfiles(), loadAccounts(), loadConfig(), loadProfileOrganization()]);
+      // Load organization first to avoid race condition with sync
+      // (sync runs when profiles change, so org must be loaded before profiles)
+      await loadProfileOrganization();
+      await Promise.all([loadProfiles(), loadAccounts(), loadConfig()]);
       // Precache version data and fetch real skin URL in background (don't await - non-blocking)
       void precacheMcVersions();
       void precacheFabricVersions();
