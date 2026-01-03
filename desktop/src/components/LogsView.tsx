@@ -94,14 +94,23 @@ export function LogsView() {
     }
   }, [selectedProfileId, tab, notify]);
 
+  // Track previous profile/tab to know when to clear logs
+  const prevProfileTabRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!selectedProfileId || tab !== "latest") return;
 
     let cancelled = false;
+    const currentKey = `${selectedProfileId}:${tab}`;
+    const shouldClearLogs = prevProfileTabRef.current !== currentKey;
+    prevProfileTabRef.current = currentKey;
 
     const startWatching = async () => {
       setLoading(true);
-      setLogs([]);
+      // Only clear logs when profile or tab changes, not when isGameRunning changes
+      if (shouldClearLogs) {
+        setLogs([]);
+      }
 
       try {
         const eventName = `log-entries-${sanitizeEventSegment(selectedProfileId)}`;

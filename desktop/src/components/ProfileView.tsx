@@ -78,8 +78,10 @@ export function ProfileView({
       return;
     }
 
+    // Normalize to lowercase for consistent cache keys and API calls
+    const normalizedType = loaderType.toLowerCase();
     // Create cache key including MC version for loaders that depend on it
-    const cacheKey = ["forge", "neoforge"].includes(loaderType) ? `${loaderType}:${mcVersion}` : loaderType;
+    const cacheKey = ["forge", "neoforge"].includes(normalizedType) ? `${normalizedType}:${mcVersion}` : normalizedType;
 
     // Check cache first
     if (loaderVersionsCacheRef.current[cacheKey]) {
@@ -90,7 +92,7 @@ export function ProfileView({
     setLoaderVersionsLoading(true);
     try {
       const versions = await invoke<string[]>("fetch_loader_versions_cmd", {
-        loaderType,
+        loaderType: normalizedType,
         mcVersion,
       });
       loaderVersionsCacheRef.current[cacheKey] = versions;
@@ -121,7 +123,8 @@ export function ProfileView({
       setExpandedDropdown(null);
     } else {
       setExpandedDropdown("loader");
-      const loaderType = profile?.loader?.type || "";
+      // Normalize loader type to lowercase for dropdown value matching
+      const loaderType = (profile?.loader?.type || "").toLowerCase();
       setSelectedLoaderType(loaderType);
       setSelectedLoaderVersion(profile?.loader?.version || "");
       // Fetch versions for current loader type
