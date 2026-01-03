@@ -380,12 +380,12 @@ export function ProfileView({
                       >
                         {loaderVersionsLoading ? (
                           <option>Loading...</option>
-                        ) : loaderVersions.length === 0 ? (
+                        ) : loaderVersions.length === 0 && !selectedLoaderVersion ? (
                           <option value="">No versions available</option>
                         ) : (
                           <>
                             {!selectedLoaderVersion && <option value="">Select version...</option>}
-                            {/* Include current version if it's not in the fetched list (unlisted/older version) */}
+                            {/* Include current version if it's not in the fetched list (unlisted/older version or empty list) */}
                             {selectedLoaderVersion && !loaderVersions.includes(selectedLoaderVersion) && (
                               <option key={selectedLoaderVersion} value={selectedLoaderVersion}>
                                 {selectedLoaderVersion} (current)
