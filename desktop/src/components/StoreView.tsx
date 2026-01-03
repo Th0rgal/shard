@@ -188,11 +188,11 @@ export function StoreView() {
     setInstalling(version.id);
     try {
       const input = {
-        profileId: selectedProfileId,
+        profile_id: selectedProfileId,
         platform: selectedProject.platform,
-        projectId: selectedProject.id,
-        versionId: version.id,
-        contentType: CATEGORY_TO_CONTENT_TYPE[category],
+        project_id: selectedProject.id,
+        version_id: version.id,
+        content_type: CATEGORY_TO_CONTENT_TYPE[category],
       };
       await invoke("store_install_cmd", { input });
       await loadProfile(selectedProfileId);
@@ -229,11 +229,11 @@ export function StoreView() {
       // Install the first (latest) version
       const latestVersion = versions[0];
       const input = {
-        profileId: selectedProfileId,
+        profile_id: selectedProfileId,
         platform: project.platform,
-        projectId: project.id,
-        versionId: latestVersion.id,
-        contentType: CATEGORY_TO_CONTENT_TYPE[category],
+        project_id: project.id,
+        version_id: latestVersion.id,
+        content_type: CATEGORY_TO_CONTENT_TYPE[category],
       };
       await invoke("store_install_cmd", { input });
       await loadProfile(selectedProfileId);

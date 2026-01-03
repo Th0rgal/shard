@@ -174,10 +174,10 @@ export function AddContentModal({ open, kind, onClose, onAddFromLibrary }: AddCo
     setInstalling(true);
     try {
       const input = {
-        profileId: profile.id,
-        projectId: selectedStoreItem.id,
+        profile_id: profile.id,
+        project_id: selectedStoreItem.id,
         platform: selectedStoreItem.platform,
-        contentType: contentTypeMap[kind],
+        content_type: contentTypeMap[kind],
       };
       await invoke("store_install_cmd", { input });
       await loadProfile(profile.id);
