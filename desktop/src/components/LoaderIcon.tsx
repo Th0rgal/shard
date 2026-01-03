@@ -1,8 +1,7 @@
 import type { CSSProperties } from "react";
 
-// Import official pixel art loader icons
+// Import official pixel art loader icons (with transparent backgrounds)
 import fabricIcon from "../assets/icons/fabric.png";
-import neoforgeIcon from "../assets/icons/neoforge.png";
 
 export type LoaderType = "fabric" | "forge" | "neoforge" | "quilt" | "vanilla" | null;
 
@@ -15,18 +14,18 @@ interface LoaderIconProps {
 
 /**
  * Displays an icon representing the mod loader type.
- * Uses official loader logos converted to translucent white to match the UI theme.
+ * Uses official logos where possible, with translucent styling to match the UI theme.
  */
 export function LoaderIcon({ loader, size = 18, className, style }: LoaderIconProps) {
-  // For pixel art PNGs - make them white/translucent
-  // brightness(0) makes it black, then invert(1) makes it white, then reduce opacity
-  const pixelArtStyle: CSSProperties = {
-    width: size,
-    height: size,
+  // For Fabric pixel art PNG - make it white/translucent
+  // brightness(0) makes it black, then invert(1) makes it white
+  const fabricStyle: CSSProperties = {
+    width: size * 1.2,
+    height: size * 1.2,
     objectFit: "contain",
     imageRendering: "pixelated",
     filter: "brightness(0) invert(1)",
-    opacity: 0.85,
+    opacity: 0.6,
     ...style,
   };
 
@@ -42,25 +41,27 @@ export function LoaderIcon({ loader, size = 18, className, style }: LoaderIconPr
 
   switch (loader) {
     case "fabric":
-      // Fabric: Official pixel art logo - larger size for visibility
+      // Fabric: Official pixel art logo (transparent background)
       return (
         <img
           src={fabricIcon}
           alt="Fabric"
           className={className}
-          style={{ ...pixelArtStyle, width: size * 1.2, height: size * 1.2 }}
+          style={fabricStyle}
         />
       );
 
     case "neoforge":
-      // NeoForge: Official fox icon (pixel art)
+      // NeoForge: Fox head icon (inline SVG for proper theming)
       return (
-        <img
-          src={neoforgeIcon}
-          alt="NeoForge"
-          className={className}
-          style={pixelArtStyle}
-        />
+        <svg {...svgProps}>
+          {/* Fox face outline */}
+          <path d="M12 4L6 8v4l2 2v4l4 2 4-2v-4l2-2V8l-6-4z" />
+          {/* Ears */}
+          <path d="M6 8L4 4l4 2M18 8l2-4-4 2" opacity="0.8" />
+          {/* Inner ear details */}
+          <path d="M7 7l1.5 1.5M17 7l-1.5 1.5" stroke="currentColor" strokeWidth="0.5" opacity="0.5" />
+        </svg>
       );
 
     case "forge":
