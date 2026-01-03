@@ -161,6 +161,21 @@ cargo tauri build --profile dev-release
 cargo tauri build --release
 ```
 
+### Local Installation
+
+When asked to rebuild and reinstall locally, install **both** components:
+
+```bash
+# 1. Install CLI to ~/.cargo/bin (available system-wide)
+cd launcher && cargo install --path . --force
+
+# 2. Build and install Desktop app
+cd desktop && bun install && cargo tauri build --release
+# Then copy desktop/src-tauri/target/release/bundle/macos/*.app to /Applications/
+```
+
+**Important**: The CLI (`shard`) and Desktop app (`Shard Launcher.app`) are separate binaries. Always install both when updating locally.
+
 ### Website
 ```bash
 cd web

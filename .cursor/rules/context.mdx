@@ -84,7 +84,13 @@ cd desktop && cargo tauri build --profile dev-release
 
 # Production build (slow, only when needed)
 cd desktop && cargo tauri build --release
+
+# Local installation (install BOTH when updating locally)
+cd launcher && cargo install --path . --force  # CLI
+cd desktop && cargo tauri build --release      # Desktop app (copy .app to /Applications/)
 ```
+
+**Important**: When reinstalling locally, always install both the CLI (`shard`) and Desktop app (`Shard Launcher.app`) - they are separate binaries.
 
 ## Code Style
 

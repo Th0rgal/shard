@@ -1,6 +1,6 @@
 [package]
 name = "shard_ui"
-version = "0.1.7"
+version = "0.1.8"
 description = "Shard launcher UI"
 authors = ["you"]
 edition = "2021"

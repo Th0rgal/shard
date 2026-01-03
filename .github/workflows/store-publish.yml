@@ -351,6 +351,27 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout shard repo
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          pip install aiohttp toml
+
       - name: Collect release info
         if: steps.check.outputs.skip != 'true'
         id: release
@@ -365,26 +386,37 @@ jobs:
           else
             DATE="$(date -u +%Y-%m-%d)"
           fi
+          # Get commit SHA for the tag
+          COMMIT_SHA=$(git rev-list -n 1 "${TAG}" 2>/dev/null || git rev-parse HEAD)
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "date=${DATE}" >> "$GITHUB_OUTPUT"
+          echo "commit=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: Fetch SHA256SUMS
+      - name: Clone flatpak-builder-tools
         if: steps.check.outputs.skip != 'true'
-        id: hashes
-        shell: bash
         run: |
-          set -euo pipefail
-          TAG="${{ steps.release.outputs.tag }}"
-          curl -fsSL "https://github.com/th0rgal/shard/releases/download/${TAG}/SHA256SUMS.txt" -o /tmp/SHA256SUMS.txt
-          DEB_HASH="$(grep 'shard-launcher-linux-x64.deb$' /tmp/SHA256SUMS.txt | awk '{print $1}')"
-          if [ -z "$DEB_HASH" ]; then
-            echo "Missing shard-launcher-linux-x64.deb hash in SHA256SUMS.txt" >&2
-            exit 1
-          fi
-          echo "deb_hash=${DEB_HASH}" >> "$GITHUB_OUTPUT"
+          git clone --depth 1 https://github.com/flatpak/flatpak-builder-tools.git /tmp/flatpak-builder-tools
 
-      - name: Update Flathub repo
+      - name: Generate cargo-sources.json
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          python3 /tmp/flatpak-builder-tools/cargo/flatpak-cargo-generator.py \
+            desktop/src-tauri/Cargo.lock \
+            -o /tmp/cargo-sources.json
+
+      - name: Generate package-lock.json and node-sources.json
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          cd desktop
+          # Generate package-lock.json from package.json (npm format for flatpak-node-generator)
+          npm install --package-lock-only --ignore-scripts
+          # Generate node sources
+          python3 /tmp/flatpak-builder-tools/node/flatpak-node-generator.py npm \
+            package-lock.json \
+            -o /tmp/node-sources.json
+
+      - name: Clone and update Flathub repo
         if: steps.check.outputs.skip != 'true'
         shell: bash
         env:
@@ -394,21 +426,179 @@ jobs:
           TAG="${{ steps.release.outputs.tag }}"
           VERSION="${{ steps.release.outputs.version }}"
           DATE="${{ steps.release.outputs.date }}"
-          DEB_HASH="${{ steps.hashes.outputs.deb_hash }}"
+          COMMIT="${{ steps.release.outputs.commit }}"
 
           git clone --branch md.thomas.shard.launcher "https://x-access-token:${GH_TOKEN}@github.com/Th0rgal/flathub.git" flathub-repo
           cd flathub-repo
 
-          # Update manifest
-          sed -i "s|url: .*shard-launcher-linux-x64\.deb|url: https://github.com/th0rgal/shard/releases/download/${TAG}/shard-launcher-linux-x64.deb|" md.thomas.shard.launcher.yml
-          sed -i "s|sha256: [0-9A-Fa-f]*|sha256: ${DEB_HASH}|" md.thomas.shard.launcher.yml
+          # Copy generated sources (these are JSON arrays of source entries)
+          cp /tmp/cargo-sources.json .
+          cp /tmp/node-sources.json .
+          # Copy package-lock.json for npm ci in the build
+          cp ../desktop/package-lock.json .
 
-          # Update metainfo with new release
-          RELEASE_ENTRY="    <release version=\"${VERSION}\" date=\"${DATE}\">\n      <description>\n        <p>Release ${VERSION}</p>\n      </description>\n    </release>"
-          sed -i "s|<releases>|<releases>\n${RELEASE_ENTRY}|" md.thomas.shard.launcher.metainfo.xml
+          # Create the desktop file
+          cat > md.thomas.shard.launcher.desktop << 'DESKTOP_EOF'
+          [Desktop Entry]
+          Name=Shard Launcher
+          Comment=A minimal, modern Minecraft launcher
+          Exec=shard-launcher
+          Icon=md.thomas.shard.launcher
+          Terminal=false
+          Type=Application
+          Categories=Game;Utility;
+          Keywords=minecraft;launcher;modrinth;curseforge;
+          StartupWMClass=shard-launcher
+          DESKTOP_EOF
 
-          git add md.thomas.shard.launcher.yml md.thomas.shard.launcher.metainfo.xml
-          git -c user.name="github-actions" -c user.email="github-actions@github.com" commit -m "Update Shard Launcher to ${VERSION}" || echo "No changes to commit"
+          # Generate the build-from-source manifest
+          # Note: cargo-sources.json and node-sources.json contain arrays of source entries
+          # that flatpak-builder will process to download and extract dependencies
+          cat > md.thomas.shard.launcher.yml << 'MANIFEST_EOF'
+          id: md.thomas.shard.launcher
+          runtime: org.freedesktop.Platform
+          runtime-version: '24.08'
+          sdk: org.freedesktop.Sdk
+          sdk-extensions:
+            - org.freedesktop.Sdk.Extension.rust-stable
+            - org.freedesktop.Sdk.Extension.node20
+          command: shard-launcher
+
+          finish-args:
+            - --socket=wayland
+            - --socket=fallback-x11
+            - --device=dri
+            - --share=ipc
+            - --share=network
+            - --persist=.shard
+            - --env=FLATPAK=1
+
+          build-options:
+            append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+            env:
+              CARGO_HOME: /run/build/shard-launcher/cargo
+              npm_config_nodedir: /usr/lib/sdk/node20
+
+          modules:
+            - name: shard-launcher
+              buildsystem: simple
+              build-options:
+                env:
+                  CARGO_NET_OFFLINE: 'true'
+              sources:
+                - type: git
+                  url: https://github.com/th0rgal/shard.git
+                  tag: TAG_PLACEHOLDER
+                  commit: COMMIT_PLACEHOLDER
+                # Cargo vendored sources (generated by flatpak-cargo-generator)
+                - cargo-sources.json
+                # Node vendored sources (generated by flatpak-node-generator)
+                - node-sources.json
+                # Cargo config to use vendored sources
+                - type: inline
+                  contents: |
+                    [source.crates-io]
+                    replace-with = "vendored-sources"
+                    [source.vendored-sources]
+                    directory = "cargo-sources"
+                  dest: .cargo
+                  dest-filename: config.toml
+                # Desktop file
+                - type: file
+                  path: md.thomas.shard.launcher.desktop
+                # Metainfo
+                - type: file
+                  path: md.thomas.shard.launcher.metainfo.xml
+                # package-lock.json for npm ci
+                - type: file
+                  path: package-lock.json
+                  dest: desktop
+              build-commands:
+                # Build frontend
+                - cd desktop && npm ci --offline --legacy-peer-deps
+                - cd desktop && npm run build
+                # Build Tauri/Rust backend
+                - cd desktop/src-tauri && cargo build --release --offline
+                # Install binary
+                - install -Dm755 desktop/src-tauri/target/release/shard-launcher /app/bin/shard-launcher
+                # Install desktop file
+                - install -Dm644 md.thomas.shard.launcher.desktop /app/share/applications/md.thomas.shard.launcher.desktop
+                # Install icons
+                - install -Dm644 desktop/src-tauri/icons/icon.png /app/share/icons/hicolor/256x256/apps/md.thomas.shard.launcher.png
+                - install -Dm644 desktop/src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/md.thomas.shard.launcher.png
+                - install -Dm644 desktop/src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/md.thomas.shard.launcher.png
+                # Install metainfo
+                - install -Dm644 md.thomas.shard.launcher.metainfo.xml /app/share/metainfo/md.thomas.shard.launcher.metainfo.xml
+          MANIFEST_EOF
+
+          # Replace placeholders in manifest
+          sed -i "s|TAG_PLACEHOLDER|${TAG}|g" md.thomas.shard.launcher.yml
+          sed -i "s|COMMIT_PLACEHOLDER|${COMMIT}|g" md.thomas.shard.launcher.yml
+
+          # Generate metainfo
+          cat > md.thomas.shard.launcher.metainfo.xml << METAINFO_EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <component type="desktop-application">
+            <id>md.thomas.shard.launcher</id>
+            <name>Shard Launcher</name>
+            <summary>A minimal, modern Minecraft launcher</summary>
+            <metadata_license>CC0-1.0</metadata_license>
+            <project_license>MIT</project_license>
+            <developer id="md.thomas">
+              <name>Thomas Marchand</name>
+            </developer>
+            <description>
+              <p>
+                Shard Launcher is a modern, minimal Minecraft launcher with a clean interface
+                focused on stability and ease of use.
+              </p>
+              <p>Features:</p>
+              <ul>
+                <li>Intuitive profile management with drag-and-drop organization</li>
+                <li>Built-in mod browser for Modrinth and CurseForge</li>
+                <li>3D skin viewer with cape support</li>
+                <li>Support for Fabric, Forge, Quilt, and NeoForge</li>
+                <li>Smart storage that automatically deduplicates mods across profiles</li>
+                <li>Multiple Microsoft account support with easy switching</li>
+              </ul>
+            </description>
+            <launchable type="desktop-id">md.thomas.shard.launcher.desktop</launchable>
+            <url type="homepage">https://shard.thomas.md</url>
+            <url type="bugtracker">https://github.com/th0rgal/shard/issues</url>
+            <url type="vcs-browser">https://github.com/th0rgal/shard</url>
+            <categories>
+              <category>Game</category>
+              <category>Utility</category>
+            </categories>
+            <keywords>
+              <keyword>minecraft</keyword>
+              <keyword>launcher</keyword>
+              <keyword>modrinth</keyword>
+              <keyword>curseforge</keyword>
+              <keyword>fabric</keyword>
+              <keyword>forge</keyword>
+            </keywords>
+            <content_rating type="oars-1.1">
+              <content_attribute id="social-chat">moderate</content_attribute>
+            </content_rating>
+            <screenshots>
+              <screenshot type="default">
+                <image>https://shard.thomas.md/screenshots/main.png</image>
+                <caption>Main launcher view with profile management</caption>
+              </screenshot>
+            </screenshots>
+            <releases>
+              <release version="${VERSION}" date="${DATE}">
+                <description>
+                  <p>Release ${VERSION}</p>
+                </description>
+              </release>
+            </releases>
+          </component>
+          METAINFO_EOF
+
+          git add md.thomas.shard.launcher.yml md.thomas.shard.launcher.metainfo.xml md.thomas.shard.launcher.desktop cargo-sources.json node-sources.json package-lock.json
+          git -c user.name="github-actions" -c user.email="github-actions@github.com" commit -m "Update Shard Launcher to ${VERSION} (build from source)" || echo "No changes to commit"
           git push
 
   winget:

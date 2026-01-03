@@ -39,15 +39,27 @@ pub struct LaunchPlan {
 pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Result<LaunchPlan> {
     let instance_dir = materialize_instance(paths, profile)?;
 
-    let version_id = resolve_version_id(paths, &profile.mc_version, profile.loader.as_ref())?;
+    let java_path = profile.runtime.java.as_deref();
+    let version_id = resolve_version_id(paths, &profile.mc_version, profile.loader.as_ref(), java_path)?;
     let resolved = resolve_version(paths, &version_id)?;
     let version = resolved.merged;
+
+    // Collect client JARs from versions in the chain.
+    // Forge/NeoForge handle the client JAR internally via their processed JARs,
+    // so we shouldn't add the vanilla client JAR to the classpath for those loaders.
+    let is_forge_loader = profile.loader.as_ref().map_or(false, |l| {
+        l.loader_type == "forge" || l.loader_type == "neoforge"
+    });
 
     let mut client_jars = Vec::new();
     for entry in &resolved.chain {
         if entry.downloads.is_some() {
             let jar_path = ensure_client_jar(paths, entry)?;
-            client_jars.push(jar_path);
+            // For Forge/NeoForge, download the client JAR (needed for processing)
+            // but don't add it to the classpath - they handle it internally
+            if !is_forge_loader {
+                client_jars.push(jar_path);
+            }
         }
     }
 
@@ -67,6 +79,7 @@ pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Res
         &asset_index_id,
         &classpath,
         &natives_dir,
+        &paths.minecraft_libraries,
         &version,
         account,
     );
@@ -120,14 +133,14 @@ pub fn launch(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Resu
     Ok(())
 }
 
-fn resolve_version_id(paths: &Paths, mc_version: &str, loader: Option<&Loader>) -> Result<String> {
+fn resolve_version_id(paths: &Paths, mc_version: &str, loader: Option<&Loader>, java: Option<&str>) -> Result<String> {
     match loader {
         None => Ok(mc_version.to_string()),
         Some(loader) => match loader.loader_type.as_str() {
             "fabric" => ensure_fabric_profile(paths, mc_version, &loader.version),
             "quilt" => ensure_quilt_profile(paths, mc_version, &loader.version),
-            "neoforge" => ensure_neoforge_profile(paths, mc_version, &loader.version),
-            "forge" => ensure_forge_profile(paths, mc_version, &loader.version),
+            "neoforge" => ensure_neoforge_profile(paths, mc_version, &loader.version, java),
+            "forge" => ensure_forge_profile(paths, mc_version, &loader.version, java),
             other => bail!("unsupported loader type: {other}"),
         },
     }
@@ -248,7 +261,7 @@ fn resolve_neoforge_latest_version(mc_version: &str) -> Result<String> {
         .context("no neoforge versions found for this minecraft version")
 }
 
-fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str) -> Result<String> {
+fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str, java: Option<&str>) -> Result<String> {
     // Resolve "latest" to actual version number
     let resolved_version = if loader_version.eq_ignore_ascii_case("latest") {
         resolve_neoforge_latest_version(mc_version)?
@@ -267,7 +280,7 @@ fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str
         return Ok(id);
     }
 
-    // Download installer JAR and extract version.json
+    // Download installer JAR
     let installer_url = format!(
         "https://maven.neoforged.net/releases/net/neoforged/neoforge/{resolved_version}/neoforge-{resolved_version}-installer.jar"
     );
@@ -275,24 +288,14 @@ fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str
     let installer_path = paths.cache_downloads.join(format!("neoforge-{resolved_version}-installer.jar"));
     download_with_sha1(&installer_url, &installer_path, None)?;
 
-    // Extract version.json from the installer JAR
-    let profile_json = extract_version_json_from_jar(&installer_path, "version.json")
-        .with_context(|| format!("failed to extract version.json from NeoForge installer"))?;
+    // Run the installer to process libraries and generate SRG jars.
+    // NeoForge installer creates the version with ID "neoforge-{version}" which matches our format.
+    run_forge_installer(paths, &installer_path, java)?;
 
-    // Modify the profile to set proper inheritance and ID
-    let mut profile: Value = serde_json::from_str(&profile_json)?;
-    profile["id"] = serde_json::json!(id);
-    if profile.get("inheritsFrom").is_none() {
-        profile["inheritsFrom"] = serde_json::json!(mc_version);
+    // Verify the installer created the expected version
+    if !target.exists() {
+        bail!("NeoForge installer did not create expected version: {}", id);
     }
-
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create version dir: {}", parent.display()))?;
-    }
-    fs::write(&target, serde_json::to_string_pretty(&profile)?).with_context(|| {
-        format!("failed to write neoforge version json: {}", target.display())
-    })?;
 
     Ok(id)
 }
@@ -319,7 +322,7 @@ fn resolve_forge_latest_version(mc_version: &str) -> Result<String> {
     bail!("no forge version found for minecraft {}", mc_version)
 }
 
-fn ensure_forge_profile(paths: &Paths, mc_version: &str, loader_version: &str) -> Result<String> {
+fn ensure_forge_profile(paths: &Paths, mc_version: &str, loader_version: &str, java: Option<&str>) -> Result<String> {
     // Resolve "latest" to actual version number
     let resolved_loader = if loader_version.eq_ignore_ascii_case("latest") {
         resolve_forge_latest_version(mc_version)?
@@ -341,8 +344,7 @@ fn ensure_forge_profile(paths: &Paths, mc_version: &str, loader_version: &str) -
         return Ok(id);
     }
 
-    // Download installer JAR and extract version.json
-    // Forge uses a slightly different Maven path structure
+    // Download installer JAR
     let installer_url = format!(
         "https://maven.minecraftforge.net/net/minecraftforge/forge/{version_id}/forge-{version_id}-installer.jar"
     );
@@ -350,16 +352,25 @@ fn ensure_forge_profile(paths: &Paths, mc_version: &str, loader_version: &str) -
     let installer_path = paths.cache_downloads.join(format!("forge-{version_id}-installer.jar"));
     download_with_sha1(&installer_url, &installer_path, None)?;
 
-    // Extract version.json from the installer JAR
-    let profile_json = extract_version_json_from_jar(&installer_path, "version.json")
-        .with_context(|| format!("failed to extract version.json from Forge installer"))?;
+    // Run the installer to process libraries and generate SRG jars.
+    // The installer creates the version at {mc_version}-forge-{forge_version}
+    // (e.g., "1.20.1-forge-47.4.10").
+    run_forge_installer(paths, &installer_path, java)?;
 
-    // Modify the profile to set proper inheritance and ID
+    // The installer created a version with its own ID format.
+    // Read that version and copy it with our ID format.
+    // Use splitn(2, '-') to handle legacy Forge version formats with multiple dashes
+    // (e.g., "1.7.10-10.13.4.1614-1.7.10" should extract "10.13.4.1614-1.7.10")
+    let forge_version = version_id.splitn(2, '-').nth(1).unwrap_or(&version_id);
+    let installer_id = format!("{mc_version}-forge-{forge_version}");
+    let installer_json_path = paths.minecraft_version_json(&installer_id);
+
+    let profile_json = fs::read_to_string(&installer_json_path)
+        .with_context(|| format!("installer did not create expected version: {}", installer_id))?;
+
+    // Modify the profile to use our ID
     let mut profile: Value = serde_json::from_str(&profile_json)?;
     profile["id"] = serde_json::json!(id);
-    if profile.get("inheritsFrom").is_none() {
-        profile["inheritsFrom"] = serde_json::json!(mc_version);
-    }
 
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)
@@ -386,6 +397,36 @@ fn extract_version_json_from_jar(jar_path: &Path, json_name: &str) -> Result<Str
         .with_context(|| format!("failed to read {} from installer", json_name))?;
 
     Ok(contents)
+}
+
+/// Run the Forge/NeoForge installer to process libraries and generate SRG jars.
+/// The installer creates the necessary processed artifacts that aren't available via Maven.
+fn run_forge_installer(paths: &Paths, installer_path: &Path, java: Option<&str>) -> Result<()> {
+    let java = resolve_java(java);
+
+    // Derive minecraft_dir from minecraft_versions path
+    let minecraft_dir = paths
+        .minecraft_versions
+        .parent()
+        .context("could not determine minecraft directory")?;
+
+    eprintln!(
+        "Running installer to process libraries (this may take a minute)..."
+    );
+
+    let status = Command::new(&java)
+        .arg("-jar")
+        .arg(installer_path)
+        .arg("--installClient")
+        .arg(minecraft_dir)
+        .status()
+        .context("failed to run forge installer")?;
+
+    if !status.success() {
+        bail!("forge installer failed with status {status}");
+    }
+
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -676,6 +717,7 @@ fn build_var_map(
     asset_index: &str,
     classpath: &str,
     natives_dir: &Path,
+    libraries_dir: &Path,
     version: &VersionJson,
     account: &LaunchAccount,
 ) -> HashMap<String, String> {
@@ -706,6 +748,14 @@ fn build_var_map(
         "natives_directory".into(),
         normalize_path_separator(&natives_dir.to_string_lossy()),
     );
+    vars.insert(
+        "library_directory".into(),
+        normalize_path_separator(&libraries_dir.to_string_lossy()),
+    );
+    vars.insert(
+        "classpath_separator".into(),
+        if cfg!(windows) { ";" } else { ":" }.to_string(),
+    );
     vars.insert("launcher_name".into(), "shard".to_string());
     vars.insert(
         "launcher_version".into(),
@@ -713,9 +763,11 @@ fn build_var_map(
     );
     vars.insert("classpath".into(), classpath.to_string());
     vars.insert("user_properties".into(), "{}".to_string());
-    if let Some(xuid) = &account.xuid {
-        vars.insert("auth_xuid".into(), xuid.clone());
-    }
+    // auth_xuid should always be present (empty string if not available)
+    vars.insert(
+        "auth_xuid".into(),
+        account.xuid.clone().unwrap_or_default(),
+    );
     vars
 }
 
@@ -1111,6 +1163,27 @@ struct AssetObject {
     url: Option<String>,
 }
 
+/// Extracts the library key from a Maven coordinate for deduplication.
+/// Format: group:artifact:version or group:artifact:version:classifier[:extension]
+/// Key includes classifier if present to avoid deduplicating native libs.
+/// Examples:
+///   "org.objectweb.asm:asm:9.6" -> "org.objectweb.asm:asm"
+///   "org.lwjgl:lwjgl:3.3.3:natives-macos-arm64" -> "org.lwjgl:lwjgl:natives-macos-arm64"
+///   "org.lwjgl:lwjgl:3.3.3:natives-macos-arm64:jar" -> "org.lwjgl:lwjgl:natives-macos-arm64"
+fn library_key(name: &str) -> Option<String> {
+    let parts: Vec<&str> = name.split(':').collect();
+    match parts.len() {
+        // group:artifact:version
+        3 => Some(format!("{}:{}", parts[0], parts[1])),
+        // group:artifact:version:classifier or group:artifact:version:classifier:extension
+        // In both cases, classifier is at index 3
+        n if n >= 4 => Some(format!("{}:{}:{}", parts[0], parts[1], parts[3])),
+        // group:artifact (no version)
+        2 => Some(format!("{}:{}", parts[0], parts[1])),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Deserialize)]
 struct Library {
     name: String,
@@ -1169,9 +1242,30 @@ fn merge_versions(mut parent: VersionJson, mut child: VersionJson) -> VersionJso
     }
 
     if !parent.libraries.is_empty() {
-        // Child libraries come first so mod loaders can override vanilla classes
+        // Child libraries come first so mod loaders can override vanilla classes.
+        // Deduplicate by group:artifact (ignoring version) to prevent classpath conflicts.
+        // For example, if Fabric has asm:9.6 and vanilla has asm:9.5, keep only asm:9.6.
+        use std::collections::HashSet;
+        let mut seen: HashSet<String> = HashSet::new();
+
+        // Track child library keys (group:artifact without version)
+        for lib in &child.libraries {
+            if let Some(key) = library_key(&lib.name) {
+                seen.insert(key);
+            }
+        }
+
+        // Only add parent libraries that aren't already provided by child
         let mut merged = child.libraries.clone();
-        merged.extend(parent.libraries.clone());
+        for lib in parent.libraries.iter() {
+            let dominated = library_key(&lib.name).map_or(false, |key| seen.contains(&key));
+            if !dominated {
+                if let Some(key) = library_key(&lib.name) {
+                    seen.insert(key);
+                }
+                merged.push(lib.clone());
+            }
+        }
         child.libraries = merged;
     }
 

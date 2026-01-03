@@ -121,6 +121,21 @@ Shard is a minimal, clean, CLI-first Minecraft launcher focused on stability, re
 | `dev-release` | `cargo tauri build --profile dev-release` | Testing builds (~30s) |
 | `release` | `cargo tauri build --release` | Production only (~3-5min) |
 
+## Local Installation
+
+When asked to rebuild and reinstall locally, install **both** the CLI and Desktop app:
+
+```bash
+# 1. Install CLI to ~/.cargo/bin
+cd launcher && cargo install --path . --force
+
+# 2. Build and install Desktop app
+cd desktop && bun install && cargo tauri build --release
+# Copy *.app to /Applications/ on macOS
+```
+
+The CLI (`shard`) and Desktop app (`Shard Launcher.app`) are separate binaries.
+
 ## UI Design
 - Design tokens in `desktop/src/styles.css` (warm dark palette, Geist fonts).
 - Custom CSS with CSS variables, not Tailwind.
