@@ -371,6 +371,8 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         run: |
           pip install aiohttp toml tomlkit
+          # Install flatpak-node-generator (it's now a Python package, not a standalone script)
+          pip install "git+https://github.com/flatpak/flatpak-builder-tools.git#subdirectory=node"
 
       - name: Collect release info
         if: steps.check.outputs.skip != 'true'
@@ -411,10 +413,8 @@ jobs:
           cd desktop
           # Generate package-lock.json from package.json (npm format for flatpak-node-generator)
           npm install --package-lock-only --ignore-scripts
-          # Generate node sources
-          python3 /tmp/flatpak-builder-tools/node/flatpak-node-generator.py npm \
-            package-lock.json \
-            -o /tmp/node-sources.json
+          # Generate node sources using the installed flatpak-node-generator package
+          flatpak-node-generator npm package-lock.json -o /tmp/node-sources.json
 
       - name: Clone and update Flathub repo
         if: steps.check.outputs.skip != 'true'
