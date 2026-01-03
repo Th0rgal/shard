@@ -66,6 +66,7 @@ function App() {
     loadProfile,
     loadAccounts,
     loadConfig,
+    loadProfileOrganization,
     notify,
     runAction,
     getActiveAccount,
@@ -87,14 +88,14 @@ function App() {
   // Initial load
   useEffect(() => {
     const loadInitial = async () => {
-      await Promise.all([loadProfiles(), loadAccounts(), loadConfig()]);
+      await Promise.all([loadProfiles(), loadAccounts(), loadConfig(), loadProfileOrganization()]);
       // Precache version data and fetch real skin URL in background (don't await - non-blocking)
       void precacheMcVersions();
       void precacheFabricVersions();
       void prefetchActiveAccountSkin();
     };
     void loadInitial();
-  }, [loadProfiles, loadAccounts, loadConfig, precacheMcVersions, precacheFabricVersions, prefetchActiveAccountSkin]);
+  }, [loadProfiles, loadAccounts, loadConfig, loadProfileOrganization, precacheMcVersions, precacheFabricVersions, prefetchActiveAccountSkin]);
 
   // Load profile when selection changes
   useEffect(() => {

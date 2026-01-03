@@ -297,7 +297,6 @@ export function Sidebar({
     moveProfileToFolder,
     setFavoriteProfile,
     renameProfileInOrganization,
-    loadProfileOrganization,
     syncProfileOrganization,
     loadProfiles,
     notify,
@@ -327,11 +326,7 @@ export function Sidebar({
     })
   );
 
-  // Load organization on mount and sync when profiles change
-  useEffect(() => {
-    loadProfileOrganization();
-  }, [loadProfileOrganization]);
-
+  // Sync organization when profiles change (organization is loaded in App.tsx on startup)
   useEffect(() => {
     syncProfileOrganization();
   }, [profiles, syncProfileOrganization]);

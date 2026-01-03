@@ -1740,3 +1740,45 @@ pub fn set_content_enabled_cmd(
     let paths = load_paths()?;
     set_content_enabled(&paths, &profile_id, &content_name, &content_type, enabled).map_err(|e| e.to_string())
 }
+
+// Profile organization types (mirrors frontend types)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileFolder {
+    pub id: String,
+    pub name: String,
+    pub profiles: Vec<String>,
+    pub collapsed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileOrganization {
+    pub folders: Vec<ProfileFolder>,
+    pub ungrouped: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub favorite_profile: Option<String>,
+}
+
+#[tauri::command]
+pub fn load_profile_organization_cmd() -> Result<ProfileOrganization, String> {
+    let paths = load_paths()?;
+    if paths.profile_organization.exists() {
+        let data = std::fs::read_to_string(&paths.profile_organization)
+            .map_err(|e| format!("Failed to read profile organization: {}", e))?;
+        serde_json::from_str(&data)
+            .map_err(|e| format!("Failed to parse profile organization: {}", e))
+    } else {
+        Ok(ProfileOrganization::default())
+    }
+}
+
+#[tauri::command]
+pub fn save_profile_organization_cmd(organization: ProfileOrganization) -> Result<(), String> {
+    let paths = load_paths()?;
+    let data = serde_json::to_string_pretty(&organization)
+        .map_err(|e| format!("Failed to serialize profile organization: {}", e))?;
+    std::fs::write(&paths.profile_organization, data)
+        .map_err(|e| format!("Failed to write profile organization: {}", e))?;
+    Ok(())
+}

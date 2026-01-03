@@ -20,6 +20,7 @@ pub struct Paths {
     pub accounts: PathBuf,
     pub config: PathBuf,
     pub library_db: PathBuf,
+    pub profile_organization: PathBuf,
 }
 
 impl Paths {
@@ -54,6 +55,7 @@ impl Paths {
         let accounts = base.join("accounts.json");
         let config = base.join("config.json");
         let library_db = base.join("library.db");
+        let profile_organization = base.join("profile-organization.json");
 
         Ok(Self {
             store_mods,
@@ -72,6 +74,7 @@ impl Paths {
             accounts,
             config,
             library_db,
+            profile_organization,
         })
     }
 

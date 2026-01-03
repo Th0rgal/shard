@@ -104,7 +104,10 @@ pub fn run() {
             commands::check_profile_updates_cmd,
             commands::apply_content_update_cmd,
             commands::set_content_pinned_cmd,
-            commands::set_content_enabled_cmd
+            commands::set_content_enabled_cmd,
+            // Profile organization commands
+            commands::load_profile_organization_cmd,
+            commands::save_profile_organization_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
