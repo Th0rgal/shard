@@ -358,6 +358,37 @@ export function Sidebar({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [setContextMenuTarget]);
 
+  // Adjust context menu position to stay within viewport
+  useEffect(() => {
+    if (contextMenuTarget && contextMenuRef.current) {
+      const menu = contextMenuRef.current;
+      const rect = menu.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      let newX = contextMenuTarget.x;
+      let newY = contextMenuTarget.y;
+
+      // Check right edge
+      if (rect.right > viewportWidth) {
+        newX = viewportWidth - rect.width - 8;
+      }
+      // Check bottom edge
+      if (rect.bottom > viewportHeight) {
+        newY = viewportHeight - rect.height - 8;
+      }
+      // Ensure minimum position
+      newX = Math.max(8, newX);
+      newY = Math.max(8, newY);
+
+      // Apply adjusted position
+      if (newX !== contextMenuTarget.x || newY !== contextMenuTarget.y) {
+        menu.style.left = `${newX}px`;
+        menu.style.top = `${newY}px`;
+      }
+    }
+  }, [contextMenuTarget]);
+
   // Focus input when editing starts
   useEffect(() => {
     if (editingFolderId && folderInputRef.current) {
