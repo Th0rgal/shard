@@ -508,6 +508,402 @@ fn compare_mc_versions(a: &str, b: &str) -> i32 {
     }
 }
 
+// === Java Download from Adoptium ===
+
+use reqwest::blocking::Client;
+use serde_json::Value;
+use std::fs;
+use std::io::{Read as IoRead, Write};
+
+/// Information about a downloadable Java release from Adoptium.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdoptiumRelease {
+    pub version: String,
+    pub major: u32,
+    pub download_url: String,
+    pub filename: String,
+    pub size: u64,
+    pub checksum: Option<String>,
+}
+
+/// Progress callback type for download operations.
+pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
+
+/// Get the current platform's OS identifier for Adoptium API.
+fn get_adoptium_os() -> &'static str {
+    #[cfg(target_os = "windows")]
+    { "windows" }
+    #[cfg(target_os = "macos")]
+    { "mac" }
+    #[cfg(target_os = "linux")]
+    { "linux" }
+}
+
+/// Get the current platform's architecture for Adoptium API.
+fn get_adoptium_arch() -> &'static str {
+    #[cfg(target_arch = "x86_64")]
+    { "x64" }
+    #[cfg(target_arch = "aarch64")]
+    { "aarch64" }
+    #[cfg(target_arch = "x86")]
+    { "x32" }
+}
+
+/// Get the archive extension for the current platform.
+fn get_archive_extension() -> &'static str {
+    #[cfg(target_os = "windows")]
+    { "zip" }
+    #[cfg(not(target_os = "windows"))]
+    { "tar.gz" }
+}
+
+/// Fetch available Java release info from Adoptium for a specific major version.
+pub fn fetch_adoptium_release(java_major: u32) -> Result<AdoptiumRelease> {
+    let os = get_adoptium_os();
+    let arch = get_adoptium_arch();
+
+    let url = format!(
+        "https://api.adoptium.net/v3/assets/latest/{}/hotspot?architecture={}&image_type=jdk&os={}&vendor=eclipse",
+        java_major, arch, os
+    );
+
+    let client = Client::builder()
+        .user_agent("Shard-Launcher")
+        .build()
+        .context("failed to create HTTP client")?;
+
+    let resp = client.get(&url)
+        .send()
+        .context("failed to fetch Adoptium release info")?
+        .error_for_status()
+        .context("Adoptium API returned error")?;
+
+    let releases: Vec<Value> = resp.json()
+        .context("failed to parse Adoptium response")?;
+
+    let release = releases.first()
+        .context("no releases found for this Java version")?;
+
+    let binary = release.get("binary")
+        .context("no binary info in release")?;
+
+    let package = binary.get("package")
+        .context("no package info in binary")?;
+
+    let version_data = release.get("version")
+        .context("no version info in release")?;
+
+    let semver = version_data.get("semver")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    let download_url = package.get("link")
+        .and_then(|v| v.as_str())
+        .context("no download link in package")?
+        .to_string();
+
+    let filename = package.get("name")
+        .and_then(|v| v.as_str())
+        .context("no filename in package")?
+        .to_string();
+
+    let size = package.get("size")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    let checksum = package.get("checksum")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    Ok(AdoptiumRelease {
+        version: semver.to_string(),
+        major: java_major,
+        download_url,
+        filename,
+        size,
+        checksum,
+    })
+}
+
+/// Download and install Java from Adoptium.
+/// Returns the path to the java executable.
+pub fn download_and_install_java(
+    java_major: u32,
+    install_dir: &Path,
+    progress_callback: Option<ProgressCallback>,
+) -> Result<PathBuf> {
+    let release = fetch_adoptium_release(java_major)?;
+
+    // Create install directory
+    fs::create_dir_all(install_dir)
+        .context("failed to create Java install directory")?;
+
+    // Download the archive
+    let archive_path = install_dir.join(&release.filename);
+    download_file_with_progress(
+        &release.download_url,
+        &archive_path,
+        release.size,
+        progress_callback,
+    )?;
+
+    // Extract the archive
+    let extracted_dir = extract_java_archive(&archive_path, install_dir)?;
+
+    // Clean up the archive
+    let _ = fs::remove_file(&archive_path);
+
+    // Find the java executable
+    let java_executable = find_java_in_extracted(&extracted_dir)?;
+
+    Ok(java_executable)
+}
+
+/// Download a file with progress reporting.
+fn download_file_with_progress(
+    url: &str,
+    dest: &Path,
+    total_size: u64,
+    progress_callback: Option<ProgressCallback>,
+) -> Result<()> {
+    let client = Client::builder()
+        .user_agent("Shard-Launcher")
+        .build()
+        .context("failed to create HTTP client")?;
+
+    let mut resp = client.get(url)
+        .send()
+        .context("failed to start download")?
+        .error_for_status()
+        .context("download failed")?;
+
+    let mut file = fs::File::create(dest)
+        .context("failed to create destination file")?;
+
+    let mut downloaded: u64 = 0;
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = resp.read(&mut buffer)
+            .context("failed to read from download stream")?;
+
+        if bytes_read == 0 {
+            break;
+        }
+
+        file.write_all(&buffer[..bytes_read])
+            .context("failed to write to file")?;
+
+        downloaded += bytes_read as u64;
+
+        if let Some(ref callback) = progress_callback {
+            callback(downloaded, total_size);
+        }
+    }
+
+    Ok(())
+}
+
+/// Extract Java archive (zip on Windows, tar.gz on others).
+fn extract_java_archive(archive_path: &Path, dest_dir: &Path) -> Result<PathBuf> {
+    let extension = get_archive_extension();
+
+    if extension == "zip" {
+        extract_zip(archive_path, dest_dir)
+    } else {
+        extract_tar_gz(archive_path, dest_dir)
+    }
+}
+
+/// Extract a zip archive.
+#[cfg(target_os = "windows")]
+fn extract_zip(archive_path: &Path, dest_dir: &Path) -> Result<PathBuf> {
+    let file = fs::File::open(archive_path)
+        .context("failed to open zip archive")?;
+
+    let mut archive = zip::ZipArchive::new(file)
+        .context("failed to read zip archive")?;
+
+    // Get the root directory name from the first entry
+    let root_dir_name = archive.by_index(0)
+        .context("zip archive is empty")?
+        .name()
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .to_string();
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)
+            .context("failed to read zip entry")?;
+
+        let outpath = dest_dir.join(file.name());
+
+        if file.name().ends_with('/') {
+            fs::create_dir_all(&outpath)
+                .context("failed to create directory from zip")?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent)
+                    .context("failed to create parent directory")?;
+            }
+            let mut outfile = fs::File::create(&outpath)
+                .context("failed to create file from zip")?;
+            std::io::copy(&mut file, &mut outfile)
+                .context("failed to extract file from zip")?;
+        }
+    }
+
+    Ok(dest_dir.join(root_dir_name))
+}
+
+/// Stub for non-Windows platforms (they use tar.gz).
+#[cfg(not(target_os = "windows"))]
+fn extract_zip(_archive_path: &Path, _dest_dir: &Path) -> Result<PathBuf> {
+    anyhow::bail!("zip extraction not supported on this platform")
+}
+
+/// Extract a tar.gz archive.
+#[cfg(not(target_os = "windows"))]
+fn extract_tar_gz(archive_path: &Path, dest_dir: &Path) -> Result<PathBuf> {
+    use std::process::Command;
+
+    // Use system tar for simplicity and reliability
+    let status = Command::new("tar")
+        .arg("-xzf")
+        .arg(archive_path)
+        .arg("-C")
+        .arg(dest_dir)
+        .status()
+        .context("failed to run tar command")?;
+
+    if !status.success() {
+        anyhow::bail!("tar extraction failed");
+    }
+
+    // Find the extracted directory (should be the only new directory)
+    let entries: Vec<_> = fs::read_dir(dest_dir)
+        .context("failed to read install directory")?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .collect();
+
+    // Find the JDK directory (usually starts with "jdk" or contains version info)
+    for entry in &entries {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("jdk") || name.contains("temurin") || name.contains("adoptium") {
+            return Ok(entry.path());
+        }
+    }
+
+    // Fallback: return first directory
+    entries.first()
+        .map(|e| e.path())
+        .context("no directory found after extraction")
+}
+
+/// Stub for Windows (uses zip).
+#[cfg(target_os = "windows")]
+fn extract_tar_gz(_archive_path: &Path, _dest_dir: &Path) -> Result<PathBuf> {
+    anyhow::bail!("tar.gz extraction not supported on Windows")
+}
+
+/// Find the java executable within an extracted JDK directory.
+fn find_java_in_extracted(jdk_dir: &Path) -> Result<PathBuf> {
+    let java_name = java_executable_name();
+
+    // Standard location: bin/java or bin/java.exe
+    let standard_path = jdk_dir.join("bin").join(java_name);
+    if standard_path.exists() {
+        return Ok(standard_path);
+    }
+
+    // macOS bundle: Contents/Home/bin/java
+    #[cfg(target_os = "macos")]
+    {
+        let macos_path = jdk_dir.join("Contents").join("Home").join("bin").join(java_name);
+        if macos_path.exists() {
+            return Ok(macos_path);
+        }
+    }
+
+    anyhow::bail!("could not find java executable in extracted JDK at {}", jdk_dir.display())
+}
+
+/// Check if a managed Java runtime for the given version exists.
+pub fn get_managed_java(java_runtimes_dir: &Path, java_major: u32) -> Option<PathBuf> {
+    let runtime_dir = java_runtimes_dir.join(format!("temurin-{}", java_major));
+
+    if !runtime_dir.exists() {
+        return None;
+    }
+
+    // Look for the java executable in the runtime directory
+    if let Ok(entries) = fs::read_dir(&runtime_dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                if let Ok(java_path) = find_java_in_extracted(&entry.path()) {
+                    // Validate that it actually works
+                    if validate_java_path(&java_path.to_string_lossy()).is_valid {
+                        return Some(java_path);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// List all managed Java runtimes.
+pub fn list_managed_runtimes(java_runtimes_dir: &Path) -> Vec<JavaInstallation> {
+    let mut runtimes = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(java_runtimes_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("temurin-") {
+                // Look for java executable
+                if let Ok(inner_entries) = fs::read_dir(entry.path()) {
+                    for inner in inner_entries.flatten() {
+                        if inner.path().is_dir() {
+                            if let Ok(java_path) = find_java_in_extracted(&inner.path()) {
+                                if let Some(installation) = validate_and_create_installation(&java_path) {
+                                    runtimes.push(installation);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    runtimes
+}
+
+/// Find a compatible Java for a Minecraft version, including managed runtimes.
+pub fn find_compatible_java(mc_version: &str, java_runtimes_dir: &Path) -> Option<String> {
+    let required = get_required_java_version(mc_version);
+
+    // First check for managed runtime
+    if let Some(managed) = get_managed_java(java_runtimes_dir, required) {
+        return Some(managed.to_string_lossy().to_string());
+    }
+
+    // Fall back to system-installed Java
+    let installations = detect_installations();
+    for install in &installations {
+        if let Some(major) = install.major {
+            if is_java_compatible(major, mc_version) {
+                return Some(install.path.clone());
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

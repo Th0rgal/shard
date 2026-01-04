@@ -3002,6 +3002,136 @@ a {
 }
 
 /* =============================================================================
+   JAVA DOWNLOAD MODAL
+   ============================================================================= */
+.java-download-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.java-download-desc {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.java-download-desc strong {
+  color: var(--text-primary);
+}
+
+.java-download-error {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 10px;
+  padding: 12px 16px;
+  color: var(--accent-danger);
+  font-size: 13px;
+}
+
+.java-download-info {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.java-download-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.java-download-info-row:not(:last-child) {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.java-download-info-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.java-download-info-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.java-download-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.java-download-actions .btn {
+  flex: 1;
+}
+
+.java-download-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.java-download-progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.java-download-progress-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.java-download-progress-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.java-download-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.java-download-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 0;
+}
+
+.java-download-success p {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--accent-success);
+}
+
+.java-download-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 16px auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* =============================================================================
    JSON VIEWER
    ============================================================================= */
 .json-viewer {
