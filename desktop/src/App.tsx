@@ -22,6 +22,7 @@ import {
   AddContentModal,
   DeviceCodeModal,
   ProfileJsonModal,
+  WindowControls,
 } from "./components";
 import { formatContentName } from "./utils";
 import type { CreateProfileForm } from "./components";
@@ -383,6 +384,7 @@ function App() {
       <div className={clsx("app-root", debugDrag && "debug-drag")}>
         <div className="titlebar-drag-region" />
         <div className="sidebar-titlebar-bg" />
+        <WindowControls />
 
         {!isOnline && (
           <div

@@ -229,6 +229,46 @@ a {
 }
 
 /* =============================================================================
+   WINDOWS WINDOW CONTROLS (minimize, maximize, close)
+   ============================================================================= */
+.window-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 32px;
+  display: flex;
+  z-index: 100;
+  -webkit-app-region: no-drag;
+}
+
+.window-control {
+  width: 46px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.window-control:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.window-control-close:hover {
+  background: #c42b1c;
+  color: white;
+}
+
+.window-control svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* =============================================================================
    SIDEBAR TITLEBAR BACKGROUND
    Visual extension of sidebar behind titlebar (for vibrancy continuity)
    ============================================================================= */
