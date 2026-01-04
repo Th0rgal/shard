@@ -87,6 +87,12 @@
   box-sizing: border-box;
 }
 
+/* Global dark theme for native select dropdowns (Windows) */
+select option {
+  background-color: #1e1d1b;
+  color: #f5f0eb;
+}
+
 /* Prevent text selection on UI elements */
 button,
 label,
@@ -2703,6 +2709,13 @@ a {
     border-color: rgba(248, 113, 113, 0.5);
   }
 
+  /* Style native dropdown options for dark theme (Windows) - for select with input class */
+  select.input option {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    padding: 8px 12px;
+  }
+
   .select {
     width: 100%;
     appearance: none;
@@ -2739,6 +2752,18 @@ a {
     box-shadow:
       inset 0 1px 2px rgba(0, 0, 0, 0.04),
       inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+
+  /* Style native dropdown options for dark theme (Windows) */
+  .select option {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    padding: 8px 12px;
+  }
+
+  .select option:hover,
+  .select option:checked {
+    background: var(--bg-hover);
   }
 }
 
