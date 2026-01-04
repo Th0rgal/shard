@@ -5,6 +5,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { platform } from "@tauri-apps/plugin-os";
 
 import { useAppStore } from "./store";
 import { useOnline } from "./hooks";
@@ -76,9 +77,15 @@ function App() {
 
   const isOnline = useOnline();
   const [launchHidden, setLaunchHidden] = useState(false);
+  const [currentPlatform, setCurrentPlatform] = useState<string>("");
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateCheckRef = useRef(false);
+
+  // Detect platform for platform-specific styling
+  useEffect(() => {
+    setCurrentPlatform(platform());
+  }, []);
 
   // Content modal state
   const contentKind = useAppStore((s) => s.activeTab);
@@ -381,7 +388,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className={clsx("app-root", debugDrag && "debug-drag")}>
+      <div className={clsx("app-root", debugDrag && "debug-drag")} data-platform={currentPlatform}>
         <div className="titlebar-drag-region" />
         <div className="sidebar-titlebar-bg" />
         <WindowControls />
