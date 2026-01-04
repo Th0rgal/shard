@@ -16,5 +16,6 @@ export { PlatformIcon, PlatformBadge, PLATFORM_COLORS } from "./PlatformIcon";
 export type { Platform } from "./PlatformIcon";
 export { LoaderIcon } from "./LoaderIcon";
 export type { LoaderType } from "./LoaderIcon";
+export { WindowControls } from "./WindowControls";
 
 export * from "./modals";
