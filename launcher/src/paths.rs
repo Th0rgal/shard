@@ -21,6 +21,7 @@ pub struct Paths {
     pub config: PathBuf,
     pub library_db: PathBuf,
     pub profile_organization: PathBuf,
+    pub java_runtimes: PathBuf,
 }
 
 impl Paths {
@@ -56,6 +57,7 @@ impl Paths {
         let config = base.join("config.json");
         let library_db = base.join("library.db");
         let profile_organization = base.join("profile-organization.json");
+        let java_runtimes = base.join("java");
 
         Ok(Self {
             store_mods,
@@ -75,6 +77,7 @@ impl Paths {
             config,
             library_db,
             profile_organization,
+            java_runtimes,
         })
     }
 
@@ -102,6 +105,8 @@ impl Paths {
             .context("failed to create minecraft assets objects directory")?;
         std::fs::create_dir_all(&self.minecraft_assets_indexes)
             .context("failed to create minecraft assets indexes directory")?;
+        std::fs::create_dir_all(&self.java_runtimes)
+            .context("failed to create java runtimes directory")?;
         Ok(())
     }
 
@@ -168,5 +173,9 @@ impl Paths {
 
     pub fn cache_manifest(&self, name: &str) -> PathBuf {
         self.cache_manifests.join(name)
+    }
+
+    pub fn java_runtime_dir(&self, name: &str) -> PathBuf {
+        self.java_runtimes.join(name)
     }
 }

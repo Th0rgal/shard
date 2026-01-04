@@ -3,7 +3,7 @@ use shard::accounts::{Account, Accounts, load_accounts, remove_account, save_acc
 use shard::auth::{DeviceCode, request_device_code};
 use shard::config::{Config, load_config, save_config};
 use shard::content_store::{ContentStore, ContentType, Platform, SearchOptions, ContentItem, ContentVersion};
-use shard::java::{JavaInstallation, JavaValidation, detect_installations, validate_java_path, get_required_java_version, is_java_compatible};
+use shard::java::{JavaInstallation, JavaValidation, AdoptiumRelease, detect_installations, validate_java_path, get_required_java_version, is_java_compatible, fetch_adoptium_release, download_and_install_java, find_compatible_java, get_managed_java, list_managed_runtimes};
 use shard::library::{Library, LibraryItem, LibraryFilter, LibraryItemInput, LibraryContentType, LibraryStats, Tag, ImportResult, UnusedItemsSummary, PurgeResult};
 use shard::logs::{LogEntry, LogFile, LogWatcher, list_log_files, list_crash_reports, read_log_file, read_log_tail};
 use shard::minecraft::{LaunchPlan, prepare};
@@ -1349,6 +1349,57 @@ pub fn get_required_java_version_cmd(mc_version: String) -> u32 {
 #[tauri::command]
 pub fn check_java_compatibility_cmd(java_major: u32, mc_version: String) -> bool {
     is_java_compatible(java_major, &mc_version)
+}
+
+/// Fetch Adoptium release info for a Java version.
+#[tauri::command]
+pub fn fetch_adoptium_release_cmd(java_major: u32) -> Result<AdoptiumRelease, String> {
+    fetch_adoptium_release(java_major).map_err(|e| e.to_string())
+}
+
+/// Download and install Java from Adoptium.
+#[tauri::command]
+pub fn download_java_cmd(app: AppHandle, java_major: u32) -> Result<String, String> {
+    let paths = Paths::new().map_err(|e| e.to_string())?;
+    paths.ensure().map_err(|e| e.to_string())?;
+
+    let install_dir = paths.java_runtimes.join(format!("temurin-{}", java_major));
+
+    // Create a progress callback that emits events
+    let app_handle = app.clone();
+    let progress_callback = Some(Box::new(move |downloaded: u64, total: u64| {
+        let _ = app_handle.emit("java-download-progress", serde_json::json!({
+            "downloaded": downloaded,
+            "total": total,
+            "percentage": if total > 0 { (downloaded as f64 / total as f64 * 100.0) as u32 } else { 0 }
+        }));
+    }) as Box<dyn Fn(u64, u64) + Send>);
+
+    let java_path = download_and_install_java(java_major, &install_dir, progress_callback)
+        .map_err(|e| e.to_string())?;
+
+    Ok(java_path.to_string_lossy().to_string())
+}
+
+/// Find a compatible Java for a Minecraft version (checks managed runtimes first).
+#[tauri::command]
+pub fn find_compatible_java_cmd(mc_version: String) -> Result<Option<String>, String> {
+    let paths = Paths::new().map_err(|e| e.to_string())?;
+    Ok(find_compatible_java(&mc_version, &paths.java_runtimes))
+}
+
+/// Check if a managed Java runtime exists for a version.
+#[tauri::command]
+pub fn get_managed_java_cmd(java_major: u32) -> Result<Option<String>, String> {
+    let paths = Paths::new().map_err(|e| e.to_string())?;
+    Ok(get_managed_java(&paths.java_runtimes, java_major).map(|p| p.to_string_lossy().to_string()))
+}
+
+/// List all managed Java runtimes.
+#[tauri::command]
+pub fn list_managed_runtimes_cmd() -> Result<Vec<JavaInstallation>, String> {
+    let paths = Paths::new().map_err(|e| e.to_string())?;
+    Ok(list_managed_runtimes(&paths.java_runtimes))
 }
 
 // ============================================================================

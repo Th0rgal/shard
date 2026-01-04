@@ -74,6 +74,12 @@ pub fn run() {
             commands::validate_java_path_cmd,
             commands::get_required_java_version_cmd,
             commands::check_java_compatibility_cmd,
+            // Java download commands
+            commands::fetch_adoptium_release_cmd,
+            commands::download_java_cmd,
+            commands::find_compatible_java_cmd,
+            commands::get_managed_java_cmd,
+            commands::list_managed_runtimes_cmd,
             // Library commands
             commands::library_list_items_cmd,
             commands::library_get_item_cmd,

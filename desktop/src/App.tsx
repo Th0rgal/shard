@@ -23,6 +23,7 @@ import {
   AddContentModal,
   DeviceCodeModal,
   ProfileJsonModal,
+  JavaDownloadModal,
   WindowControls,
 } from "./components";
 import { formatContentName } from "./utils";
@@ -81,6 +82,12 @@ function App() {
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateCheckRef = useRef(false);
+
+  // Java download modal state
+  const [javaDownloadState, setJavaDownloadState] = useState<{
+    javaMajor: number;
+    mcVersion: string;
+  } | null>(null);
 
   // Detect platform for platform-specific styling
   useEffect(() => {
@@ -322,6 +329,24 @@ function App() {
       return;
     }
 
+    // Get profile to check MC version
+    const currentProfile = useAppStore.getState().profile;
+    if (!currentProfile?.mcVersion) {
+      notify("Invalid profile", "Profile has no Minecraft version set.");
+      return;
+    }
+
+    // Check if compatible Java is available
+    const mcVersion = currentProfile.mcVersion;
+    const compatibleJava = await invoke<string | null>("find_compatible_java_cmd", { mcVersion });
+
+    if (!compatibleJava) {
+      // No compatible Java found - get required version and show download modal
+      const requiredJava = await invoke<number>("get_required_java_version_cmd", { mcVersion });
+      setJavaDownloadState({ javaMajor: requiredJava, mcVersion });
+      return;
+    }
+
     // Set status immediately to prevent double-clicks
     setLaunchStatus({ stage: "queued" });
 
@@ -518,6 +543,18 @@ function App() {
           open={activeModal === "json"}
           profile={profile}
           onClose={() => setActiveModal(null)}
+        />
+
+        <JavaDownloadModal
+          open={javaDownloadState !== null}
+          onClose={() => setJavaDownloadState(null)}
+          javaMajor={javaDownloadState?.javaMajor ?? 21}
+          mcVersion={javaDownloadState?.mcVersion ?? ""}
+          onSuccess={() => {
+            setJavaDownloadState(null);
+            // Retry launch after Java is installed
+            handleLaunch();
+          }}
         />
 
         {confirmState && (
