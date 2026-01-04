@@ -1,4 +1,5 @@
 use crate::instance::materialize_instance;
+use crate::java::{detect_installations, get_required_java_version, is_java_compatible};
 use crate::paths::Paths;
 use crate::profile::{Loader, Profile};
 use crate::util::normalize_path_separator;
@@ -66,7 +67,7 @@ pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Res
     let asset_index_id = ensure_assets(paths, &version)?;
     let (classpath, natives_dir) = ensure_libraries(paths, &version, &instance_dir, &client_jars)?;
 
-    let java_exec = resolve_java(profile.runtime.java.as_deref());
+    let java_exec = resolve_java(profile.runtime.java.as_deref(), &profile.mc_version);
     let assets_root = paths
         .minecraft_assets_objects
         .parent()
@@ -290,7 +291,7 @@ fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str
 
     // Run the installer to process libraries and generate SRG jars.
     // NeoForge installer creates the version with ID "neoforge-{version}" which matches our format.
-    run_forge_installer(paths, &installer_path, java)?;
+    run_forge_installer(paths, &installer_path, mc_version, java)?;
 
     // Verify the installer created the expected version
     if !target.exists() {
@@ -355,7 +356,7 @@ fn ensure_forge_profile(paths: &Paths, mc_version: &str, loader_version: &str, j
     // Run the installer to process libraries and generate SRG jars.
     // The installer creates the version at {mc_version}-forge-{forge_version}
     // (e.g., "1.20.1-forge-47.4.10").
-    run_forge_installer(paths, &installer_path, java)?;
+    run_forge_installer(paths, &installer_path, mc_version, java)?;
 
     // The installer created a version with its own ID format.
     // Read that version and copy it with our ID format.
@@ -401,8 +402,8 @@ fn extract_version_json_from_jar(jar_path: &Path, json_name: &str) -> Result<Str
 
 /// Run the Forge/NeoForge installer to process libraries and generate SRG jars.
 /// The installer creates the necessary processed artifacts that aren't available via Maven.
-fn run_forge_installer(paths: &Paths, installer_path: &Path, java: Option<&str>) -> Result<()> {
-    let java = resolve_java(java);
+fn run_forge_installer(paths: &Paths, installer_path: &Path, mc_version: &str, java: Option<&str>) -> Result<()> {
+    let java = resolve_java(java, mc_version);
 
     // Derive minecraft_dir from minecraft_versions path
     let minecraft_dir = paths
@@ -410,15 +411,28 @@ fn run_forge_installer(paths: &Paths, installer_path: &Path, java: Option<&str>)
         .parent()
         .context("could not determine minecraft directory")?;
 
+    // The Forge installer expects launcher_profiles.json to exist in the minecraft directory.
+    // Create a minimal valid profile file if it doesn't exist.
+    let profiles_json = minecraft_dir.join("launcher_profiles.json");
+    if !profiles_json.exists() {
+        let minimal_profiles = r#"{"profiles":{},"version":1}"#;
+        std::fs::write(&profiles_json, minimal_profiles)
+            .context("failed to create launcher_profiles.json for Forge installer")?;
+    }
+
     eprintln!(
         "Running installer to process libraries (this may take a minute)..."
     );
 
+    // Run the installer with the working directory set to cache_downloads.
+    // This ensures the installer can write its log file (installer.jar.log) without
+    // permission issues, especially on Windows.
     let status = Command::new(&java)
         .arg("-jar")
         .arg(installer_path)
         .arg("--installClient")
         .arg(minecraft_dir)
+        .current_dir(&paths.cache_downloads)
         .status()
         .context("failed to run forge installer")?;
 
@@ -795,15 +809,44 @@ fn strip_classpath_args(args: &mut Vec<String>) {
     }
 }
 
-fn resolve_java(override_java: Option<&str>) -> String {
+fn resolve_java(override_java: Option<&str>, mc_version: &str) -> String {
+    // If user explicitly set a Java path, use it (they know what they're doing)
     if let Some(java) = override_java {
         return java.to_string();
     }
-    if let Ok(java_home) = std::env::var("JAVA_HOME") {
-        let candidate = Path::new(&java_home).join("bin").join("java");
-        return candidate.to_string_lossy().to_string();
+
+    let required_java = get_required_java_version(mc_version);
+
+    // Try to find a compatible Java installation
+    let installations = detect_installations();
+    for install in &installations {
+        if let Some(major) = install.major {
+            if is_java_compatible(major, mc_version) {
+                eprintln!(
+                    "Auto-selected Java {} ({}) for Minecraft {}",
+                    major,
+                    install.vendor.as_deref().unwrap_or("Unknown"),
+                    mc_version
+                );
+                return install.path.clone();
+            }
+        }
     }
-    "java".to_string()
+
+    // Fall back to JAVA_HOME or system java, but warn if incompatible
+    let fallback = if let Ok(java_home) = std::env::var("JAVA_HOME") {
+        Path::new(&java_home).join("bin").join("java").to_string_lossy().to_string()
+    } else {
+        "java".to_string()
+    };
+
+    eprintln!(
+        "Warning: Could not find Java {} or newer for Minecraft {}. \
+         Using '{}' which may not be compatible.",
+        required_java, mc_version, fallback
+    );
+
+    fallback
 }
 
 fn download_text(url: &str) -> Result<String> {
