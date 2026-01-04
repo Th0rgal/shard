@@ -282,7 +282,7 @@ a {
 .sidebar {
   width: var(--sidebar-width);
   height: 100%;
-  background: rgba(30, 28, 26, 0.45);
+  background: rgba(30, 28, 26, 0.3);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-right: 1px solid rgba(255, 255, 255, 0.08);
@@ -295,7 +295,12 @@ a {
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 10;
-  padding-top: 52px;
+  padding-top: 52px; /* Space for macOS traffic lights */
+}
+
+/* Windows: reduce top padding since window controls are on the right */
+[data-platform="windows"] .sidebar {
+  padding-top: 16px;
 }
 
 /* Subtle ambient tint overlay */
