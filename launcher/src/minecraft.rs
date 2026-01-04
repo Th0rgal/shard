@@ -410,15 +410,28 @@ fn run_forge_installer(paths: &Paths, installer_path: &Path, java: Option<&str>)
         .parent()
         .context("could not determine minecraft directory")?;
 
+    // The Forge installer expects launcher_profiles.json to exist in the minecraft directory.
+    // Create a minimal valid profile file if it doesn't exist.
+    let profiles_json = minecraft_dir.join("launcher_profiles.json");
+    if !profiles_json.exists() {
+        let minimal_profiles = r#"{"profiles":{},"version":1}"#;
+        std::fs::write(&profiles_json, minimal_profiles)
+            .context("failed to create launcher_profiles.json for Forge installer")?;
+    }
+
     eprintln!(
         "Running installer to process libraries (this may take a minute)..."
     );
 
+    // Run the installer with the working directory set to cache_downloads.
+    // This ensures the installer can write its log file (installer.jar.log) without
+    // permission issues, especially on Windows.
     let status = Command::new(&java)
         .arg("-jar")
         .arg(installer_path)
         .arg("--installClient")
         .arg(minecraft_dir)
+        .current_dir(&paths.cache_downloads)
         .status()
         .context("failed to run forge installer")?;
 
