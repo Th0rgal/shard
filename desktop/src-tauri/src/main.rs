@@ -10,6 +10,15 @@ fn main() {
         if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
+
+        // On some Wayland setups the AppImage fails to create an EGL display.
+        // Fallback to X11 when running from AppImage unless the user overrides.
+        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok()
+            || matches!(std::env::var("XDG_SESSION_TYPE"), Ok(session) if session == "wayland");
+        let is_appimage = std::env::var("APPIMAGE").is_ok();
+        if is_appimage && is_wayland && std::env::var("GDK_BACKEND").is_err() {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
     }
 
     shard_ui::run();
