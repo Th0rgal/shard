@@ -378,9 +378,14 @@ fn minecraft_login(xsts_token: &str, user_hash: &str) -> Result<MinecraftToken> 
         .post(MC_LOGIN_URL)
         .json(&body)
         .send()
-        .context("failed minecraft login request")?
-        .error_for_status()
-        .context("minecraft login failed")?;
+        .context("failed minecraft login request")?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp
+            .text()
+            .unwrap_or_else(|_| "<failed to read body>".to_string());
+        return Err(anyhow::anyhow!("minecraft login failed: {status} {body}"));
+    }
 
     let data: McLoginResponse = resp.json().context("failed to parse minecraft login")?;
     let expires_in = data.expires_in.unwrap_or(24 * 60 * 60);
