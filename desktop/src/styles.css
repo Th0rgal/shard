@@ -3346,6 +3346,8 @@ a {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  height: 100%;
+  min-height: 0;
 }
 
 .add-content-tabs {
@@ -3381,7 +3383,7 @@ a {
 
 .add-content-list {
   position: relative;
-  max-height: 320px;
+  flex: 1;
   min-height: 200px;
   overflow-y: auto;
   border: 1px solid var(--border-subtle);
