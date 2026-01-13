@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use shard::accounts::{Account, Accounts, load_accounts, remove_account, save_accounts, set_active};
+use shard::accounts::{Account, Accounts, delete_account_tokens, load_accounts, remove_account, save_accounts, set_active};
 use shard::auth::{DeviceCode, request_device_code};
 use shard::config::{Config, load_config, save_config};
 use shard::content_store::{ContentStore, ContentType, Platform, SearchOptions, ContentItem, ContentVersion};
@@ -351,8 +351,13 @@ pub fn set_active_account_cmd(id: String) -> Result<(), String> {
 pub fn remove_account_cmd(id: String) -> Result<(), String> {
     let paths = load_paths()?;
     let mut accounts = load_accounts(&paths).map_err(|e| e.to_string())?;
-    if remove_account(&mut accounts, &id) {
+    let removed_uuids = remove_account(&mut accounts, &id);
+    if !removed_uuids.is_empty() {
+        // Save accounts first, then delete tokens to avoid inconsistent state
         save_accounts(&paths, &accounts).map_err(|e| e.to_string())?;
+        for uuid in &removed_uuids {
+            delete_account_tokens(uuid).map_err(|e| e.to_string())?;
+        }
         Ok(())
     } else {
         Err("account not found".to_string())

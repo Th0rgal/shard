@@ -1,11 +1,48 @@
 mod commands;
 
+/// Check if the current Linux desktop environment uses client-side decorations (CSDs).
+/// Returns true for GNOME and GNOME-based environments, false otherwise.
+#[cfg(target_os = "linux")]
+fn is_csd_desktop() -> bool {
+    // Check XDG_CURRENT_DESKTOP which can contain multiple values separated by ":"
+    if let Ok(desktop) = std::env::var("XDG_CURRENT_DESKTOP") {
+        let desktop_lower = desktop.to_lowercase();
+        // GNOME and GNOME-based environments use CSDs
+        if desktop_lower.contains("gnome")
+            || desktop_lower.contains("unity")
+            || desktop_lower.contains("pantheon")
+            || desktop_lower.contains("budgie")
+        {
+            return true;
+        }
+    }
+
+    // Fallback: check for GNOME session ID
+    if std::env::var("GNOME_DESKTOP_SESSION_ID").is_ok() {
+        return true;
+    }
+
+    false
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             #[cfg(desktop)]
             let _ = app.handle().plugin(tauri_plugin_updater::Builder::new().build());
+
+            // On Linux with non-GNOME desktops, disable native window decorations
+            // to prevent double title bars. The app has its own custom title bar.
+            #[cfg(target_os = "linux")]
+            {
+                if !is_csd_desktop() {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.set_decorations(false);
+                    }
+                }
+            }
+
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())

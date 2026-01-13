@@ -4,7 +4,7 @@ use reqwest::blocking::Client;
 use reqwest::header::CONTENT_TYPE;
 use semver::Version;
 use serde::Deserialize;
-use shard::accounts::{load_accounts, remove_account, save_accounts, set_active};
+use shard::accounts::{delete_account_tokens, load_accounts, remove_account, save_accounts, set_active};
 use shard::auth::request_device_code;
 use shard::config::{load_config, save_config};
 use shard::content_store::{ContentStore, ContentType, Platform, SearchOptions};
@@ -1057,8 +1057,13 @@ fn handle_account_command(paths: &Paths, command: AccountCommand) -> Result<()> 
             if accounts.accounts.is_empty() {
                 bail!("no accounts configured");
             }
-            if remove_account(&mut accounts, &id) {
+            let removed_uuids = remove_account(&mut accounts, &id);
+            if !removed_uuids.is_empty() {
+                // Save accounts first, then delete tokens to avoid inconsistent state
                 save_accounts(paths, &accounts)?;
+                for uuid in &removed_uuids {
+                    delete_account_tokens(uuid)?;
+                }
                 println!("removed account {id}");
             } else {
                 bail!("account not found: {id}");
