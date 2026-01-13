@@ -14,8 +14,37 @@ permissions:
   contents: write
 
 jobs:
-  # Build CLI binaries for all platforms
+  extract-api-key:
+    runs-on: ubuntu-latest
+    outputs:
+      curse_key: ${{ steps.extract.outputs.curse_key }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Extract CurseForge API key
+        id: extract
+        run: |
+          python3 curseforge_key_extractor.py 2>&1 | tee /tmp/curse_output.txt
+          cat /tmp/curse_output.txt
+          CURSE_KEY=$(grep "^api key:" /tmp/curse_output.txt | cut -d' ' -f3)
+          echo "extracted curse key: $CURSE_KEY"
+          if [ -z "$CURSE_KEY" ]; then
+            echo "failed to extract curse key" >&2
+            exit 1
+          fi
+          echo "curse_key=$CURSE_KEY" >> $GITHUB_OUTPUT
+
   build-cli:
+    needs: extract-api-key
     strategy:
       fail-fast: false
       matrix:
@@ -58,7 +87,7 @@ jobs:
       - name: Build CLI
         env:
           SHARD_MS_CLIENT_ID: ${{ secrets.SHARD_MS_CLIENT_ID }}
-          SHARD_CURSEFORGE_API_KEY: ${{ secrets.SHARD_CURSEFORGE_API_KEY }}
+          SHARD_CURSEFORGE_API_KEY: ${{ needs.extract-api-key.outputs.curse_key }}
         run: cargo build --release --target ${{ matrix.target }} -p shard
 
       - name: Prepare artifact (Unix)
@@ -85,8 +114,8 @@ jobs:
             ${{ matrix.artifact }}.zip
           if-no-files-found: ignore
 
-  # Build desktop app for all platforms
   build-desktop:
+    needs: extract-api-key
     strategy:
       fail-fast: false
       matrix:
@@ -153,7 +182,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           SHARD_MS_CLIENT_ID: ${{ secrets.SHARD_MS_CLIENT_ID }}
-          SHARD_CURSEFORGE_API_KEY: ${{ secrets.SHARD_CURSEFORGE_API_KEY }}
+          SHARD_CURSEFORGE_API_KEY: ${{ needs.extract-api-key.outputs.curse_key }}
         with:
           projectPath: desktop
           args: --target ${{ matrix.target }}
@@ -162,8 +191,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p renamed-artifacts
-          # Find and rename desktop artifacts with clear names
-          # Note: tauri-action uses workspace root target dir, not desktop/src-tauri/target
           if [ "${{ matrix.platform }}" = "macos-latest" ]; then
             find target/${{ matrix.target }}/release/bundle -name "*.dmg" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.dmg \; 2>/dev/null || true
             find target/${{ matrix.target }}/release/bundle -name "*.app.tar.gz" -exec cp {} renamed-artifacts/shard-launcher-${{ matrix.name }}.app.tar.gz \; 2>/dev/null || true
@@ -195,7 +222,6 @@ jobs:
           path: renamed-artifacts/*
           if-no-files-found: ignore
 
-  # Create the GitHub release with all artifacts
   release:
     needs: [build-cli, build-desktop]
     runs-on: ubuntu-latest
@@ -298,7 +324,6 @@ jobs:
 
             **macOS/Linux**:
             ```bash
-            # Extract and move to PATH
             tar -xzf shard-cli-*.tar.gz
             sudo mv shard /usr/local/bin/
             ```
