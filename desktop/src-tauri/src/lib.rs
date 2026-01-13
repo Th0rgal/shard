@@ -1,5 +1,8 @@
 mod commands;
 
+#[cfg(target_os = "linux")]
+use tauri::Manager;
+
 /// Check if the current Linux desktop environment uses client-side decorations (CSDs).
 /// Returns true for GNOME and GNOME-based environments, false otherwise.
 #[cfg(target_os = "linux")]
