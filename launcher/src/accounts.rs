@@ -1,6 +1,7 @@
 use crate::paths::Paths;
 use crate::util::now_epoch_secs;
 use anyhow::{Context, Result};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use keyring::{Entry, Error as KeyringError};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -104,10 +105,12 @@ fn store_tokens(uuid: &str, tokens: &StoredTokens) -> Result<()> {
         return Ok(());
     }
 
-    let chunks: Vec<String> = data
+    // Use base64 encoding to avoid UTF-8 boundary issues when chunking
+    let encoded = BASE64.encode(data.as_bytes());
+    let chunks: Vec<&str> = encoded
         .as_bytes()
         .chunks(KEYRING_CHUNK_MAX_LEN)
-        .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
+        .map(|chunk| std::str::from_utf8(chunk).expect("base64 is always valid ASCII"))
         .collect();
 
     let meta_entry = keyring_entry(&account_chunk_meta_key(uuid))?;
@@ -118,7 +121,7 @@ fn store_tokens(uuid: &str, tokens: &StoredTokens) -> Result<()> {
     for (index, chunk) in chunks.into_iter().enumerate() {
         let entry = keyring_entry(&account_chunk_key(uuid, index))?;
         entry
-            .set_password(&chunk)
+            .set_password(chunk)
             .with_context(|| format!("failed to store token chunk {index} for account {uuid}"))?;
     }
     Ok(())
@@ -147,14 +150,21 @@ fn load_tokens(uuid: &str) -> Result<StoredTokens> {
         .parse()
         .with_context(|| format!("invalid token chunk metadata for account {uuid}"))?;
 
-    let mut data = String::new();
+    let mut encoded = String::new();
     for index in 0..count {
         let entry = keyring_entry(&account_chunk_key(uuid, index))?;
         let chunk = entry
             .get_password()
             .with_context(|| format!("missing token chunk {index} for account {uuid}"))?;
-        data.push_str(&chunk);
+        encoded.push_str(&chunk);
     }
+
+    // Decode base64 to get the original JSON
+    let decoded_bytes = BASE64
+        .decode(&encoded)
+        .with_context(|| format!("failed to decode base64 tokens for account {uuid}"))?;
+    let data = String::from_utf8(decoded_bytes)
+        .with_context(|| format!("invalid UTF-8 in decoded tokens for account {uuid}"))?;
 
     serde_json::from_str(&data)
         .with_context(|| format!("failed to parse keyring tokens for account {uuid}"))
@@ -344,7 +354,9 @@ pub fn upsert_account(accounts: &mut Accounts, account: Account) {
     }
 }
 
-pub fn remove_account(accounts: &mut Accounts, id: &str) -> bool {
+/// Removes accounts matching the given ID (UUID or username) and returns their UUIDs.
+/// Returns an empty vector if no accounts were found.
+pub fn remove_account(accounts: &mut Accounts, id: &str) -> Vec<String> {
     let id_lower = id.to_lowercase();
     let removed_uuids: Vec<String> = accounts
         .accounts
@@ -353,7 +365,6 @@ pub fn remove_account(accounts: &mut Accounts, id: &str) -> bool {
         .map(|account| account.uuid.clone())
         .collect();
 
-    let before = accounts.accounts.len();
     accounts
         .accounts
         .retain(|account| !removed_uuids.contains(&account.uuid));
@@ -362,7 +373,7 @@ pub fn remove_account(accounts: &mut Accounts, id: &str) -> bool {
     {
         accounts.active = None;
     }
-    before != accounts.accounts.len()
+    removed_uuids
 }
 
 pub fn set_active(accounts: &mut Accounts, id: &str) -> bool {

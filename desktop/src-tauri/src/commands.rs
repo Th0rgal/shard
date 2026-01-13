@@ -351,9 +351,13 @@ pub fn set_active_account_cmd(id: String) -> Result<(), String> {
 pub fn remove_account_cmd(id: String) -> Result<(), String> {
     let paths = load_paths()?;
     let mut accounts = load_accounts(&paths).map_err(|e| e.to_string())?;
-    if remove_account(&mut accounts, &id) {
-        delete_account_tokens(&id).map_err(|e| e.to_string())?;
+    let removed_uuids = remove_account(&mut accounts, &id);
+    if !removed_uuids.is_empty() {
+        // Save accounts first, then delete tokens to avoid inconsistent state
         save_accounts(&paths, &accounts).map_err(|e| e.to_string())?;
+        for uuid in &removed_uuids {
+            delete_account_tokens(uuid).map_err(|e| e.to_string())?;
+        }
         Ok(())
     } else {
         Err("account not found".to_string())
