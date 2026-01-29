@@ -523,8 +523,8 @@ jobs:
                 - cd desktop && npm run build
                 # Build Tauri/Rust backend
                 - cd desktop/src-tauri && cargo build --release --offline
-                # Install binary
-                - install -Dm755 desktop/src-tauri/target/release/shard-launcher /app/bin/shard-launcher
+                # Install binary (Tauri v2 uses package name from Cargo.toml, which is shard_ui)
+                - install -Dm755 desktop/src-tauri/target/release/shard_ui /app/bin/shard-launcher
                 # Install desktop file from upstream
                 - install -Dm644 packaging/flathub/md.thomas.shard.launcher.desktop /app/share/applications/md.thomas.shard.launcher.desktop
                 # Install icons
