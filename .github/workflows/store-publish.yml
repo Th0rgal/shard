@@ -465,7 +465,10 @@ jobs:
             append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
             env:
               CARGO_HOME: /run/build/shard-launcher/cargo
+              XDG_CACHE_HOME: /run/build/shard-launcher/flatpak-node/cache
+              npm_config_cache: /run/build/shard-launcher/flatpak-node/npm-cache
               npm_config_nodedir: /usr/lib/sdk/node20
+              npm_config_offline: 'true'
 
           modules:
             # Install OpenJDK 21 for running Minecraft
