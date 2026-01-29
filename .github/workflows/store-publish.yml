@@ -504,7 +504,7 @@ jobs:
                     [source.crates-io]
                     replace-with = "vendored-sources"
                     [source.vendored-sources]
-                    directory = "cargo-sources"
+                    directory = "cargo/vendor"
                   dest: .cargo
                   dest-filename: config.toml
                 # package-lock.json for npm ci
@@ -512,6 +512,12 @@ jobs:
                   path: package-lock.json
                   dest: desktop
               build-commands:
+                # Remove @playwright/test from package.json - it's only needed for testing,
+                # not for the production build, and its browser binaries can't be vendored
+                - sed -i '/"@playwright\/test"/d' desktop/package.json
+                # Remove prebuild script that uses bun (not available in Flatpak SDK)
+                # The sync-version script is only needed during development
+                - sed -i '/"prebuild":/d' desktop/package.json
                 # Build frontend
                 - cd desktop && npm ci --offline --legacy-peer-deps
                 - cd desktop && npm run build
