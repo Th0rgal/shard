@@ -412,8 +412,10 @@ jobs:
         run: |
           cd desktop
           # Generate package-lock.json from package.json (npm format for flatpak-node-generator)
-          npm install --package-lock-only --ignore-scripts
+          # Use --omit=dev to exclude devDependencies (playwright, etc.) that aren't needed for production build
+          npm install --package-lock-only --ignore-scripts --omit=dev
           # Generate node sources using the installed flatpak-node-generator package
+          # Note: --no-devel is not needed here since we already excluded devDependencies in package-lock.json
           flatpak-node-generator npm package-lock.json -o /tmp/node-sources.json
 
       - name: Clone and update Flathub repo
