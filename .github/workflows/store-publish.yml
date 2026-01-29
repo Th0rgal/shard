@@ -412,11 +412,11 @@ jobs:
         run: |
           cd desktop
           # Generate package-lock.json from package.json (npm format for flatpak-node-generator)
-          # Use --omit=dev to exclude devDependencies (playwright, etc.) that aren't needed for production build
-          npm install --package-lock-only --ignore-scripts --omit=dev
+          npm install --package-lock-only --ignore-scripts
           # Generate node sources using the installed flatpak-node-generator package
-          # Note: --no-devel is not needed here since we already excluded devDependencies in package-lock.json
-          flatpak-node-generator npm package-lock.json -o /tmp/node-sources.json
+          # Use --no-devel to exclude devDependencies (playwright, etc.) that aren't needed for production build
+          # This prevents flatpak-node-generator from trying to download Playwright browser binaries
+          flatpak-node-generator npm package-lock.json -o /tmp/node-sources.json --no-devel
 
       - name: Clone and update Flathub repo
         if: steps.check.outputs.skip != 'true'
