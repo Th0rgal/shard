@@ -450,11 +450,11 @@ jobs:
           cat > md.thomas.shard.launcher.yml << 'MANIFEST_EOF'
           id: md.thomas.shard.launcher
           runtime: org.gnome.Platform
-          runtime-version: '47'
+          runtime-version: '48'
           sdk: org.gnome.Sdk
           sdk-extensions:
-            - org.gnome.Sdk.Extension.rust-stable
-            - org.gnome.Sdk.Extension.node20
+            - org.freedesktop.Sdk.Extension.rust-stable
+            - org.freedesktop.Sdk.Extension.node20
             - org.freedesktop.Sdk.Extension.openjdk21
           command: shard-launcher
 
