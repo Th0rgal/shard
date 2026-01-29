@@ -411,12 +411,15 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         run: |
           cd desktop
+          # Temporarily remove Playwright from package.json to prevent flatpak-node-generator
+          # from trying to download Playwright browser binaries (which fails in CI)
+          # We can't use --no-devel because it excludes build-time dependencies like Babel
+          jq 'del(.devDependencies["@playwright/test"])' package.json > package.json.tmp
+          mv package.json.tmp package.json
           # Generate package-lock.json from package.json (npm format for flatpak-node-generator)
           npm install --package-lock-only --ignore-scripts
           # Generate node sources using the installed flatpak-node-generator package
-          # Use --no-devel to exclude devDependencies (playwright, etc.) that aren't needed for production build
-          # This prevents flatpak-node-generator from trying to download Playwright browser binaries
-          flatpak-node-generator npm package-lock.json -o /tmp/node-sources.json --no-devel
+          flatpak-node-generator npm package-lock.json -o /tmp/node-sources.json
 
       - name: Clone and update Flathub repo
         if: steps.check.outputs.skip != 'true'
