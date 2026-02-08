@@ -4,7 +4,10 @@ use reqwest::blocking::Client;
 use reqwest::header::CONTENT_TYPE;
 use semver::Version;
 use serde::Deserialize;
-use shard::accounts::{delete_account_tokens, load_accounts, remove_account, save_accounts, set_active};
+use shard::accounts::{
+    delete_account_tokens, export_accounts_to_file, import_accounts_from_file, load_accounts,
+    merge_accounts, remove_account, save_accounts, set_active,
+};
 use shard::auth::request_device_code;
 use shard::config::{load_config, save_config};
 use shard::content_store::{ContentStore, ContentType, Platform, SearchOptions};
@@ -237,6 +240,20 @@ enum AccountCommand {
     Remove { id: String },
     /// Show account profile info (skin, cape)
     Info { id: Option<String> },
+    /// Export accounts to a JSON file (includes tokens for portability)
+    Export {
+        /// Output file path (default: accounts_export.json)
+        #[arg(short, long, default_value = "accounts_export.json")]
+        output: PathBuf,
+    },
+    /// Import accounts from a JSON file
+    Import {
+        /// Input file path
+        input: PathBuf,
+        /// Replace existing accounts with same UUID
+        #[arg(long)]
+        replace: bool,
+    },
     /// Skin management
     Skin {
         #[command(subcommand)]
@@ -1122,6 +1139,34 @@ fn handle_account_command(paths: &Paths, command: AccountCommand) -> Result<()> 
                 Err(e) => {
                     println!("(could not fetch skin/cape info: {e})");
                 }
+            }
+        }
+        AccountCommand::Export { output } => {
+            let accounts = load_accounts(paths)?;
+            if accounts.accounts.is_empty() {
+                bail!("no accounts to export");
+            }
+            export_accounts_to_file(&accounts, &output)?;
+            println!(
+                "exported {} account(s) to {}",
+                accounts.accounts.len(),
+                output.display()
+            );
+            println!("⚠️  WARNING: This file contains sensitive authentication tokens.");
+            println!("   Keep it secure and delete after use.");
+        }
+        AccountCommand::Import { input, replace } => {
+            let mut existing = load_accounts(paths).unwrap_or_default();
+            let imported = import_accounts_from_file(&input)?;
+            let import_count = imported.accounts.len();
+            let added = merge_accounts(&mut existing, imported, replace);
+            save_accounts(paths, &existing)?;
+            println!(
+                "imported {added} account(s) from {} ({import_count} in file)",
+                input.display()
+            );
+            if added < import_count && !replace {
+                println!("tip: use --replace to overwrite existing accounts with same UUID");
             }
         }
         AccountCommand::Skin { command } => handle_skin_command(paths, command)?,

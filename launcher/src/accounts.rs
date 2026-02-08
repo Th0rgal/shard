@@ -389,3 +389,103 @@ pub fn set_active(accounts: &mut Accounts, id: &str) -> bool {
     }
     false
 }
+
+/// Portable account format for export/import (includes tokens in the JSON)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportedAccounts {
+    #[serde(default)]
+    pub active: Option<String>,
+    #[serde(default)]
+    pub accounts: Vec<ExportedAccount>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportedAccount {
+    pub uuid: String,
+    pub username: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xuid: Option<String>,
+    pub msa: MsaTokens,
+    pub minecraft: MinecraftTokens,
+}
+
+impl From<&Account> for ExportedAccount {
+    fn from(account: &Account) -> Self {
+        ExportedAccount {
+            uuid: account.uuid.clone(),
+            username: account.username.clone(),
+            xuid: account.xuid.clone(),
+            msa: account.msa.clone(),
+            minecraft: account.minecraft.clone(),
+        }
+    }
+}
+
+impl From<ExportedAccount> for Account {
+    fn from(exported: ExportedAccount) -> Self {
+        Account {
+            uuid: exported.uuid,
+            username: exported.username,
+            xuid: exported.xuid,
+            msa: exported.msa,
+            minecraft: exported.minecraft,
+        }
+    }
+}
+
+/// Export all accounts to a portable JSON format (includes tokens)
+pub fn export_accounts(accounts: &Accounts) -> ExportedAccounts {
+    ExportedAccounts {
+        active: accounts.active.clone(),
+        accounts: accounts.accounts.iter().map(ExportedAccount::from).collect(),
+    }
+}
+
+/// Export accounts to a JSON file
+pub fn export_accounts_to_file(accounts: &Accounts, path: &Path) -> Result<()> {
+    let exported = export_accounts(accounts);
+    let data = serde_json::to_string_pretty(&exported).context("failed to serialize accounts for export")?;
+    fs::write(path, data).with_context(|| format!("failed to write export file: {}", path.display()))?;
+    Ok(())
+}
+
+/// Import accounts from a portable JSON format
+pub fn import_accounts(exported: ExportedAccounts) -> Accounts {
+    Accounts {
+        active: exported.active,
+        accounts: exported.accounts.into_iter().map(Account::from).collect(),
+    }
+}
+
+/// Import accounts from a JSON file
+pub fn import_accounts_from_file(path: &Path) -> Result<Accounts> {
+    let data = fs::read_to_string(path)
+        .with_context(|| format!("failed to read import file: {}", path.display()))?;
+    let exported: ExportedAccounts = serde_json::from_str(&data)
+        .with_context(|| format!("failed to parse import file: {}", path.display()))?;
+    Ok(import_accounts(exported))
+}
+
+/// Merge imported accounts into existing accounts, optionally replacing duplicates
+pub fn merge_accounts(existing: &mut Accounts, imported: Accounts, replace: bool) -> usize {
+    let mut count = 0;
+    for account in imported.accounts {
+        let exists = existing.accounts.iter().any(|a| a.uuid == account.uuid);
+        if exists {
+            if replace {
+                if let Some(existing_account) = existing.accounts.iter_mut().find(|a| a.uuid == account.uuid) {
+                    *existing_account = account;
+                    count += 1;
+                }
+            }
+        } else {
+            existing.accounts.push(account);
+            count += 1;
+        }
+    }
+    // Update active if not set and imported has one
+    if existing.active.is_none() {
+        existing.active = imported.active;
+    }
+    count
+}
