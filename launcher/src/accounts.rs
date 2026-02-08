@@ -470,13 +470,14 @@ pub fn import_accounts_from_file(path: &Path) -> Result<Accounts> {
 pub fn merge_accounts(existing: &mut Accounts, imported: Accounts, replace: bool) -> usize {
     let mut count = 0;
     for account in imported.accounts {
-        let exists = existing.accounts.iter().any(|a| a.uuid == account.uuid);
-        if exists {
+        if let Some(existing_account) = existing
+            .accounts
+            .iter_mut()
+            .find(|a| a.uuid == account.uuid)
+        {
             if replace {
-                if let Some(existing_account) = existing.accounts.iter_mut().find(|a| a.uuid == account.uuid) {
-                    *existing_account = account;
-                    count += 1;
-                }
+                *existing_account = account;
+                count += 1;
             }
         } else {
             existing.accounts.push(account);
