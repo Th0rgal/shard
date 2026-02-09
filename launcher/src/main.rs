@@ -1156,7 +1156,7 @@ fn handle_account_command(paths: &Paths, command: AccountCommand) -> Result<()> 
             println!("   Keep it secure and delete after use.");
         }
         AccountCommand::Import { input, replace } => {
-            let mut existing = load_accounts(paths).unwrap_or_default();
+            let mut existing = load_accounts(paths)?;
             let imported = import_accounts_from_file(&input)?;
             let import_count = imported.accounts.len();
             let added = merge_accounts(&mut existing, imported, replace);
