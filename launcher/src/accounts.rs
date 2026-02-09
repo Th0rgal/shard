@@ -4,11 +4,41 @@ use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use keyring::{Entry, Error as KeyringError};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::OnceLock;
 
 const KEYRING_SERVICE: &str = "shard";
 const KEYRING_CHUNK_MAX_LEN: usize = 1000;
+
+/// Global flag to track if keyring is available (checked once per process)
+static KEYRING_AVAILABLE: OnceLock<bool> = OnceLock::new();
+
+/// Check if the system keyring is available
+fn is_keyring_available() -> bool {
+    *KEYRING_AVAILABLE.get_or_init(|| {
+        // Try to create a test entry to see if keyring works
+        match Entry::new(KEYRING_SERVICE, "test-availability") {
+            Ok(entry) => {
+                // Try to get (will fail with NoEntry, but that's fine - it means keyring works)
+                match entry.get_password() {
+                    Ok(_) => true,
+                    Err(KeyringError::NoEntry) => true,
+                    Err(_) => false,
+                }
+            }
+            Err(_) => false,
+        }
+    })
+}
+
+/// File-based token storage (fallback when keyring is unavailable)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct FileTokenStore {
+    #[serde(default)]
+    tokens: HashMap<String, StoredTokens>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Accounts {
@@ -94,8 +124,64 @@ fn keyring_entry(name: &str) -> Result<Entry> {
         .with_context(|| format!("failed to open keyring entry: {name}"))
 }
 
-fn store_tokens(uuid: &str, tokens: &StoredTokens) -> Result<()> {
-    delete_account_tokens(uuid)?;
+// ============================================================================
+// File-based token storage (fallback)
+// ============================================================================
+
+fn load_file_token_store(paths: &Paths) -> Result<FileTokenStore> {
+    if !paths.tokens.exists() {
+        return Ok(FileTokenStore::default());
+    }
+    let data = fs::read_to_string(&paths.tokens)
+        .with_context(|| format!("failed to read tokens file: {}", paths.tokens.display()))?;
+    serde_json::from_str(&data)
+        .with_context(|| format!("failed to parse tokens file: {}", paths.tokens.display()))
+}
+
+fn save_file_token_store(paths: &Paths, store: &FileTokenStore) -> Result<()> {
+    if let Some(parent) = paths.tokens.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create directory: {}", parent.display()))?;
+    }
+    let data = serde_json::to_string_pretty(store).context("failed to serialize tokens")?;
+    fs::write(&paths.tokens, data)
+        .with_context(|| format!("failed to write tokens file: {}", paths.tokens.display()))?;
+
+    // Set restrictive permissions on Unix (tokens file contains secrets)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        let _ = fs::set_permissions(&paths.tokens, perms);
+    }
+
+    Ok(())
+}
+
+fn store_tokens_file(paths: &Paths, uuid: &str, tokens: &StoredTokens) -> Result<()> {
+    let mut store = load_file_token_store(paths)?;
+    store.tokens.insert(uuid.to_string(), tokens.clone());
+    save_file_token_store(paths, &store)
+}
+
+fn load_tokens_file(paths: &Paths, uuid: &str) -> Result<StoredTokens> {
+    let store = load_file_token_store(paths)?;
+    store.tokens.get(uuid).cloned()
+        .with_context(|| format!("no tokens found for account {uuid}"))
+}
+
+fn delete_tokens_file(paths: &Paths, uuid: &str) -> Result<()> {
+    let mut store = load_file_token_store(paths)?;
+    store.tokens.remove(uuid);
+    save_file_token_store(paths, &store)
+}
+
+// ============================================================================
+// Keyring-based token storage (primary)
+// ============================================================================
+
+fn store_tokens_keyring(uuid: &str, tokens: &StoredTokens) -> Result<()> {
+    delete_tokens_keyring(uuid)?;
     let data = serde_json::to_string(tokens).context("failed to serialize account tokens")?;
     if data.len() <= KEYRING_CHUNK_MAX_LEN {
         let entry = keyring_entry(&account_key(uuid))?;
@@ -127,7 +213,7 @@ fn store_tokens(uuid: &str, tokens: &StoredTokens) -> Result<()> {
     Ok(())
 }
 
-fn load_tokens(uuid: &str) -> Result<StoredTokens> {
+fn load_tokens_keyring(uuid: &str) -> Result<StoredTokens> {
     let entry = keyring_entry(&account_key(uuid))?;
     match entry.get_password() {
         Ok(data) => {
@@ -170,7 +256,7 @@ fn load_tokens(uuid: &str) -> Result<StoredTokens> {
         .with_context(|| format!("failed to parse keyring tokens for account {uuid}"))
 }
 
-pub fn delete_account_tokens(id: &str) -> Result<()> {
+fn delete_tokens_keyring(id: &str) -> Result<()> {
     let entry = keyring_entry(&account_key(id))?;
     match entry.delete_password() {
         Ok(()) => {}
@@ -215,6 +301,34 @@ pub fn delete_account_tokens(id: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+// ============================================================================
+// Unified token storage API (uses keyring with file fallback)
+// ============================================================================
+
+fn store_tokens(paths: &Paths, uuid: &str, tokens: &StoredTokens) -> Result<()> {
+    if is_keyring_available() {
+        store_tokens_keyring(uuid, tokens)
+    } else {
+        store_tokens_file(paths, uuid, tokens)
+    }
+}
+
+fn load_tokens(paths: &Paths, uuid: &str) -> Result<StoredTokens> {
+    if is_keyring_available() {
+        load_tokens_keyring(uuid)
+    } else {
+        load_tokens_file(paths, uuid)
+    }
+}
+
+pub fn delete_account_tokens(paths: &Paths, id: &str) -> Result<()> {
+    if is_keyring_available() {
+        delete_tokens_keyring(id)
+    } else {
+        delete_tokens_file(paths, id)
+    }
 }
 
 fn read_accounts_file(paths: &Paths) -> Result<String> {
@@ -287,7 +401,7 @@ pub fn load_accounts(paths: &Paths) -> Result<Accounts> {
                 msa: account.msa.clone(),
                 minecraft: account.minecraft.clone(),
             };
-            store_tokens(&account.uuid, &tokens)?;
+            store_tokens(paths, &account.uuid, &tokens)?;
         }
         let stored = to_stored_accounts(&legacy);
         write_accounts_file(paths, &stored)?;
@@ -305,7 +419,7 @@ pub fn load_accounts(paths: &Paths) -> Result<Accounts> {
         accounts: Vec::with_capacity(stored.accounts.len()),
     };
     for account in stored.accounts {
-        let tokens = load_tokens(&account.uuid)?;
+        let tokens = load_tokens(paths, &account.uuid)?;
         accounts.accounts.push(Account {
             uuid: account.uuid,
             username: account.username,
@@ -323,7 +437,7 @@ pub fn save_accounts(paths: &Paths, accounts: &Accounts) -> Result<()> {
             msa: account.msa.clone(),
             minecraft: account.minecraft.clone(),
         };
-        store_tokens(&account.uuid, &tokens)?;
+        store_tokens(paths, &account.uuid, &tokens)?;
     }
     let stored = to_stored_accounts(accounts);
     write_accounts_file(paths, &stored)

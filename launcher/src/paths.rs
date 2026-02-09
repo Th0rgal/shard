@@ -18,6 +18,7 @@ pub struct Paths {
     pub minecraft_assets_objects: PathBuf,
     pub minecraft_assets_indexes: PathBuf,
     pub accounts: PathBuf,
+    pub tokens: PathBuf,
     pub config: PathBuf,
     pub library_db: PathBuf,
     pub profile_organization: PathBuf,
@@ -54,6 +55,7 @@ impl Paths {
         let minecraft_assets_indexes = minecraft_root.join("assets").join("indexes");
 
         let accounts = base.join("accounts.json");
+        let tokens = base.join("tokens.json");
         let config = base.join("config.json");
         let library_db = base.join("library.db");
         let profile_organization = base.join("profile-organization.json");
@@ -74,6 +76,7 @@ impl Paths {
             minecraft_assets_objects,
             minecraft_assets_indexes,
             accounts,
+            tokens,
             config,
             library_db,
             profile_organization,

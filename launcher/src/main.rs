@@ -1079,7 +1079,7 @@ fn handle_account_command(paths: &Paths, command: AccountCommand) -> Result<()> 
                 // Save accounts first, then delete tokens to avoid inconsistent state
                 save_accounts(paths, &accounts)?;
                 for uuid in &removed_uuids {
-                    delete_account_tokens(uuid)?;
+                    delete_account_tokens(paths, uuid)?;
                 }
                 println!("removed account {id}");
             } else {
