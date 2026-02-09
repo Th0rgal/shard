@@ -61,14 +61,34 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.1.24" date="2026-01-29">
+      <description>
+        <p>Fix Flatpak build with correct binary name for Tauri v2</p>
+      </description>
+    </release>
+    <release version="0.1.23" date="2026-01-29">
+      <description>
+        <p>Switch to GNOME Platform 48 for WebKitGTK support</p>
+      </description>
+    </release>
+    <release version="0.1.15" date="2026-01-15">
+      <description>
+        <p>Fix mod modal visibility and improve UI</p>
+      </description>
+    </release>
+    <release version="0.1.14" date="2026-01-14">
+      <description>
+        <p>Fix AppImage Wayland fallback</p>
+      </description>
+    </release>
+    <release version="0.1.12" date="2026-01-12">
+      <description>
+        <p>Add automatic Java download from Adoptium</p>
+      </description>
+    </release>
     <release version="0.1.9" date="2025-01-03">
       <description>
         <p>Add Flathub packaging with screenshots and demo video</p>
-      </description>
-    </release>
-    <release version="0.1.8" date="2025-01-03">
-      <description>
-        <p>Release 0.1.8</p>
       </description>
     </release>
   </releases>
