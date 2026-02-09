@@ -61,6 +61,11 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.1.25" date="2026-02-09">
+      <description>
+        <p>Add account export/import for portable account transfer</p>
+      </description>
+    </release>
     <release version="0.1.24" date="2026-01-29">
       <description>
         <p>Fix Flatpak build with correct binary name for Tauri v2</p>
