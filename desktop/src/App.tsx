@@ -228,7 +228,7 @@ function App() {
       if (e.button !== 0) return;
 
       const target = e.target as HTMLElement;
-      const dragRegion = target.closest(".titlebar-drag-region, [data-tauri-drag-region='true'], .drag-region");
+      const dragRegion = target.closest(".titlebar-drag-region, [data-tauri-drag-region='true']");
       if (!dragRegion) return;
       if (target.closest(NO_DRAG_SELECTOR)) return;
       // Don't interfere with HTML5 drag operations (e.g., sidebar profile reordering)
@@ -434,7 +434,7 @@ function App() {
           />
         )}
 
-        <div className="app-layout drag-region">
+        <div className="app-layout">
           <Sidebar
             onCreateProfile={() => setActiveModal("create")}
             onCloneProfile={() => setActiveModal("clone")}

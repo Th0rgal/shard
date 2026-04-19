@@ -356,7 +356,7 @@ pub fn remove_account_cmd(id: String) -> Result<(), String> {
         // Save accounts first, then delete tokens to avoid inconsistent state
         save_accounts(&paths, &accounts).map_err(|e| e.to_string())?;
         for uuid in &removed_uuids {
-            delete_account_tokens(uuid).map_err(|e| e.to_string())?;
+            delete_account_tokens(&paths, uuid).map_err(|e| e.to_string())?;
         }
         Ok(())
     } else {

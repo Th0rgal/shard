@@ -3,15 +3,16 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
 
 export function WindowControls() {
-  const [isWindows, setIsWindows] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
-    setIsWindows(platform() === "windows");
+    const currentPlatform = platform();
+    setShowControls(currentPlatform === "windows" || currentPlatform === "linux");
   }, []);
 
   useEffect(() => {
-    if (!isWindows) return;
+    if (!showControls) return;
 
     const win = getCurrentWindow();
 
@@ -26,9 +27,9 @@ export function WindowControls() {
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [isWindows]);
+  }, [showControls]);
 
-  if (!isWindows) return null;
+  if (!showControls) return null;
 
   const win = getCurrentWindow();
 
