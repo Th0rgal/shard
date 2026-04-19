@@ -33,7 +33,19 @@ use shard::template::{Template, list_templates, load_template, init_builtin_temp
 use shard::updates::{StorageStats, UpdateCheckResult, get_storage_stats, check_all_updates, check_profile_updates, set_content_pinned, set_content_enabled, apply_update};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
+
+static CUSTOM_CHROME_ENABLED: AtomicBool = AtomicBool::new(false);
+
+pub fn set_custom_chrome_enabled(enabled: bool) {
+    CUSTOM_CHROME_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub fn custom_chrome_enabled_cmd() -> bool {
+    CUSTOM_CHROME_ENABLED.load(Ordering::Relaxed)
+}
 
 #[derive(Serialize)]
 pub struct DiffResult {

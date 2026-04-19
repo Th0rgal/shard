@@ -79,6 +79,7 @@ function App() {
   const isOnline = useOnline();
   const [launchHidden, setLaunchHidden] = useState(false);
   const [currentPlatform, setCurrentPlatform] = useState<string>("");
+  const [customChromeEnabled, setCustomChromeEnabled] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateCheckRef = useRef(false);
@@ -91,7 +92,18 @@ function App() {
 
   // Detect platform for platform-specific styling
   useEffect(() => {
-    setCurrentPlatform(platform());
+    const detectedPlatform = platform();
+    setCurrentPlatform(detectedPlatform);
+
+    if (detectedPlatform === "windows") {
+      setCustomChromeEnabled(true);
+    } else if (detectedPlatform === "linux") {
+      invoke<boolean>("custom_chrome_enabled_cmd")
+        .then(setCustomChromeEnabled)
+        .catch(() => setCustomChromeEnabled(false));
+    } else {
+      setCustomChromeEnabled(false);
+    }
   }, []);
 
   // Content modal state
@@ -224,6 +236,8 @@ function App() {
 
   // Window dragging
   useEffect(() => {
+    if (!customChromeEnabled) return;
+
     const handleMouseDown = async (e: MouseEvent) => {
       if (e.button !== 0) return;
 
@@ -255,7 +269,7 @@ function App() {
 
     document.addEventListener("mousedown", handleMouseDown);
     return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, []);
+  }, [customChromeEnabled]);
 
   // Handlers
   const handleCreateProfile = useCallback(async (form: CreateProfileForm) => {
@@ -413,10 +427,13 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className={clsx("app-root", debugDrag && "debug-drag")} data-platform={currentPlatform}>
+      <div
+        className={clsx("app-root", debugDrag && "debug-drag")}
+        data-platform={customChromeEnabled ? currentPlatform : undefined}
+      >
         <div className="titlebar-drag-region" />
         <div className="sidebar-titlebar-bg" />
-        <WindowControls />
+        <WindowControls enabled={customChromeEnabled} />
 
         {!isOnline && (
           <div

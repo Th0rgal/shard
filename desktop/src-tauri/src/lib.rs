@@ -15,7 +15,7 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_decorations(false);
+                    commands::set_custom_chrome_enabled(window.set_decorations(false).is_ok());
                 }
             }
 
@@ -118,6 +118,7 @@ pub fn run() {
             commands::purge_unused_items_cmd,
             commands::get_auto_update_enabled_cmd,
             commands::set_auto_update_enabled_cmd,
+            commands::custom_chrome_enabled_cmd,
             // Update checking commands
             commands::check_all_updates_cmd,
             commands::check_profile_updates_cmd,
