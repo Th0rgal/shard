@@ -235,7 +235,7 @@ a {
 }
 
 /* =============================================================================
-   WINDOWS WINDOW CONTROLS (minimize, maximize, close)
+   WINDOW CONTROLS
    ============================================================================= */
 .window-controls {
   position: fixed;
@@ -304,8 +304,9 @@ a {
   padding-top: 52px; /* Space for macOS traffic lights */
 }
 
-/* Windows: reduce top padding since window controls are on the right */
-[data-platform="windows"] .sidebar {
+/* Right-side window controls do not need traffic-light spacing */
+[data-platform="windows"] .sidebar,
+[data-platform="linux"] .sidebar {
   padding-top: 16px;
 }
 

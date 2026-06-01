@@ -1,17 +1,15 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { platform } from "@tauri-apps/plugin-os";
 
-export function WindowControls() {
-  const [isWindows, setIsWindows] = useState(false);
+type WindowControlsProps = {
+  enabled: boolean;
+};
+
+export function WindowControls({ enabled }: WindowControlsProps) {
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
-    setIsWindows(platform() === "windows");
-  }, []);
-
-  useEffect(() => {
-    if (!isWindows) return;
+    if (!enabled) return;
 
     const win = getCurrentWindow();
 
@@ -26,9 +24,9 @@ export function WindowControls() {
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [isWindows]);
+  }, [enabled]);
 
-  if (!isWindows) return null;
+  if (!enabled) return null;
 
   const win = getCurrentWindow();
 
