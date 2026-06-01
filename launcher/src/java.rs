@@ -46,6 +46,7 @@ pub struct JavaRequirement {
 /// Known Minecraft version to Java requirements.
 /// Listed from newest to oldest.
 const MC_JAVA_REQUIREMENTS: &[JavaRequirement] = &[
+    JavaRequirement { mc_version_min: "26.1", java_major: 25 },
     JavaRequirement { mc_version_min: "1.20.5", java_major: 21 },
     JavaRequirement { mc_version_min: "1.18", java_major: 17 },
     JavaRequirement { mc_version_min: "1.17", java_major: 16 },
@@ -919,6 +920,8 @@ mod tests {
 
     #[test]
     fn test_get_required_java_version() {
+        assert_eq!(get_required_java_version("26.1.2"), 25);
+        assert_eq!(get_required_java_version("26.1"), 25);
         assert_eq!(get_required_java_version("1.20.6"), 21);
         assert_eq!(get_required_java_version("1.20.5"), 21);
         assert_eq!(get_required_java_version("1.20.4"), 17);
@@ -930,6 +933,8 @@ mod tests {
 
     #[test]
     fn test_is_java_compatible() {
+        assert!(is_java_compatible(25, "26.1.2"));
+        assert!(!is_java_compatible(21, "26.1.2"));
         assert!(is_java_compatible(21, "1.20.6"));
         assert!(is_java_compatible(21, "1.18"));
         assert!(!is_java_compatible(17, "1.20.6"));
@@ -946,6 +951,8 @@ mod tests {
         assert_eq!(compare_mc_versions("1.20.6", "1.20.5"), 1);
         assert_eq!(compare_mc_versions("1.20.4", "1.20.5"), -1);
         assert_eq!(compare_mc_versions("1.21", "1.20.5"), 1);
+        assert_eq!(compare_mc_versions("26.1.2", "1.21.11"), 1);
+        assert_eq!(compare_mc_versions("26.1.2", "26.1"), 1);
         assert_eq!(compare_mc_versions("1.18", "1.17"), 1);
     }
 
