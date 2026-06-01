@@ -20,7 +20,10 @@ use shard::logs::{
 };
 use shard::minecraft::{launch, prepare};
 use shard::modpack::import_mrpack;
-use shard::ops::{finish_device_code_flow, parse_loader, resolve_input, resolve_launch_account};
+use shard::ops::{
+    ensure_fresh_account, finish_device_code_flow, parse_loader, resolve_input,
+    resolve_launch_account,
+};
 use shard::paths::Paths;
 use shard::profile::{
     ContentRef, Loader, Runtime, clone_profile, create_profile, delete_profile, diff_profiles,
@@ -39,7 +42,7 @@ use shard::template::{
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Parser, Debug)]
 #[command(name = "shard", version, about = "Minimal Minecraft launcher")]
@@ -240,6 +243,11 @@ enum AccountCommand {
     Remove { id: String },
     /// Show account profile info (skin, cape)
     Info { id: Option<String> },
+    /// Validate and refresh account tokens without launching Minecraft
+    Check {
+        /// Account to check (default: active)
+        id: Option<String>,
+    },
     /// Export accounts to a JSON file (includes tokens for portability)
     Export {
         /// Output file path (default: accounts_export.json)
@@ -1140,6 +1148,20 @@ fn handle_account_command(paths: &Paths, command: AccountCommand) -> Result<()> 
                     println!("(could not fetch skin/cape info: {e})");
                 }
             }
+        }
+        AccountCommand::Check { id } => {
+            let account = ensure_fresh_account(paths, id)?;
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .context("system time is before Unix epoch")?
+                .as_secs();
+            let msa_secs = account.msa.expires_at.saturating_sub(now);
+            let mc_secs = account.minecraft.expires_at.saturating_sub(now);
+
+            println!("Account: {} ({})", account.username, account.uuid);
+            println!("MSA token: valid for {} minute(s)", msa_secs / 60);
+            println!("Minecraft token: valid for {} minute(s)", mc_secs / 60);
+            println!("Token refresh: ok");
         }
         AccountCommand::Export { output } => {
             let accounts = load_accounts(paths)?;

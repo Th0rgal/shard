@@ -46,10 +46,26 @@ pub struct JavaRequirement {
 /// Known Minecraft version to Java requirements.
 /// Listed from newest to oldest.
 const MC_JAVA_REQUIREMENTS: &[JavaRequirement] = &[
-    JavaRequirement { mc_version_min: "1.20.5", java_major: 21 },
-    JavaRequirement { mc_version_min: "1.18", java_major: 17 },
-    JavaRequirement { mc_version_min: "1.17", java_major: 16 },
-    JavaRequirement { mc_version_min: "1.0", java_major: 8 },
+    JavaRequirement {
+        mc_version_min: "26.1",
+        java_major: 25,
+    },
+    JavaRequirement {
+        mc_version_min: "1.20.5",
+        java_major: 21,
+    },
+    JavaRequirement {
+        mc_version_min: "1.18",
+        java_major: 17,
+    },
+    JavaRequirement {
+        mc_version_min: "1.17",
+        java_major: 16,
+    },
+    JavaRequirement {
+        mc_version_min: "1.0",
+        java_major: 8,
+    },
 ];
 
 /// Detect all Java installations on the system.
@@ -479,6 +495,17 @@ fn is_snapshot_version(version: &str) -> bool {
 fn compare_mc_versions(a: &str, b: &str) -> i32 {
     // Handle snapshot versions - treat them as "latest" (very high version)
     // This ensures snapshots get modern Java requirements
+    let parse_numeric_part = |part: Option<&&str>| -> u32 {
+        part.map(|p| {
+            p.chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0)
+    };
+
     let parse = |s: &str| -> (u32, u32, u32) {
         if is_snapshot_version(s) {
             // Extract year from snapshot (e.g., "24" from "24w14a")
@@ -492,9 +519,9 @@ fn compare_mc_versions(a: &str, b: &str) -> i32 {
         }
 
         let parts: Vec<&str> = s.split('.').collect();
-        let major = parts.first().and_then(|p| p.parse().ok()).unwrap_or(0);
-        let minor = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(0);
-        let patch = parts.get(2).and_then(|p| p.parse().ok()).unwrap_or(0);
+        let major = parse_numeric_part(parts.first());
+        let minor = parse_numeric_part(parts.get(1));
+        let patch = parse_numeric_part(parts.get(2));
         (major, minor, patch)
     };
 
@@ -919,6 +946,9 @@ mod tests {
 
     #[test]
     fn test_get_required_java_version() {
+        assert_eq!(get_required_java_version("26.1-snapshot-1"), 25);
+        assert_eq!(get_required_java_version("26.1.2"), 25);
+        assert_eq!(get_required_java_version("26.1"), 25);
         assert_eq!(get_required_java_version("1.20.6"), 21);
         assert_eq!(get_required_java_version("1.20.5"), 21);
         assert_eq!(get_required_java_version("1.20.4"), 17);
@@ -930,6 +960,8 @@ mod tests {
 
     #[test]
     fn test_is_java_compatible() {
+        assert!(is_java_compatible(25, "26.1.2"));
+        assert!(!is_java_compatible(21, "26.1.2"));
         assert!(is_java_compatible(21, "1.20.6"));
         assert!(is_java_compatible(21, "1.18"));
         assert!(!is_java_compatible(17, "1.20.6"));
@@ -946,6 +978,11 @@ mod tests {
         assert_eq!(compare_mc_versions("1.20.6", "1.20.5"), 1);
         assert_eq!(compare_mc_versions("1.20.4", "1.20.5"), -1);
         assert_eq!(compare_mc_versions("1.21", "1.20.5"), 1);
+        assert_eq!(compare_mc_versions("26.1.2", "1.21.11"), 1);
+        assert_eq!(compare_mc_versions("26.1.2", "26.1"), 1);
+        assert_eq!(compare_mc_versions("26.1-snapshot-1", "26.1"), 0);
+        assert_eq!(compare_mc_versions("26.1.2-rc1", "26.1"), 1);
+        assert_eq!(compare_mc_versions("1.21.11-rc1", "1.21.10"), 1);
         assert_eq!(compare_mc_versions("1.18", "1.17"), 1);
     }
 

@@ -150,6 +150,7 @@ shard store install <profile> <platform> <project-id>
 shard account add                             # Add Microsoft account
 shard account list                            # List accounts
 shard account use <username>                  # Set active account
+shard account check                           # Validate/refresh active account tokens
 shard account remove <username>               # Remove account
 ```
 
