@@ -121,7 +121,8 @@ shard launch my-profile
 ```bash
 shard list                                    # List all profiles
 shard profile create <id> --mc <version>      # Create profile
-shard profile create <id> --mc 1.21.4 --loader fabric
+shard profile create <id> --mc 1.21.4 --loader fabric   # bare type = fabric@latest, pinned at creation
+shard profile create <id> --mc 26.3 --loader fabric@0.19.5
 shard profile clone <src> <dst>               # Clone profile
 shard profile show <id>                       # Show profile details
 shard profile diff <a> <b>                    # Compare profiles
