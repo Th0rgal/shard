@@ -496,7 +496,9 @@ fn run_launch(app: AppHandle, profile_id: String, account_id: Option<String>) ->
 }
 
 impl From<LaunchPlan> for LaunchPlanDto {
+    /// The DTO is display-only (launch plan modal), so credentials are redacted.
     fn from(plan: LaunchPlan) -> Self {
+        let plan = plan.redacted();
         Self {
             instance_dir: plan.instance_dir.to_string_lossy().to_string(),
             java_exec: plan.java_exec,

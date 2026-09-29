@@ -832,7 +832,8 @@ fn run() -> Result<()> {
             let profile_data = load_profile(&paths, &profile)?;
             let launch_account = resolve_launch_account(&paths, account)?;
             if prepare_only {
-                let plan = prepare(&paths, &profile_data, &launch_account)?;
+                // Never print credentials (e.g. --accessToken) from the launch plan.
+                let plan = prepare(&paths, &profile_data, &launch_account)?.redacted();
                 println!("prepared instance: {}", plan.instance_dir.display());
                 println!("java: {}", plan.java_exec);
                 println!("main class: {}", plan.main_class);

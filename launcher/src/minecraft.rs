@@ -37,6 +37,51 @@ pub struct LaunchPlan {
     pub game_args: Vec<String>,
 }
 
+/// Placeholder printed in place of secret argument values.
+pub const REDACTED: &str = "<redacted>";
+
+/// Game/JVM argument flags whose value is a credential and must never be printed or logged.
+const SECRET_ARG_FLAGS: &[&str] = &["--accessToken", "--session"];
+
+/// Return a copy of `args` with the values of secret flags (e.g. `--accessToken`) replaced by
+/// [`REDACTED`]. Handles both `--flag value` and `--flag=value` forms.
+pub fn redact_args(args: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len());
+    let mut redact_next = false;
+    for arg in args {
+        if redact_next {
+            out.push(REDACTED.to_string());
+            redact_next = false;
+            continue;
+        }
+        if SECRET_ARG_FLAGS.contains(&arg.as_str()) {
+            redact_next = true;
+            out.push(arg.clone());
+            continue;
+        }
+        if let Some((flag, _)) = arg.split_once('=')
+            && SECRET_ARG_FLAGS.contains(&flag)
+        {
+            out.push(format!("{flag}={REDACTED}"));
+            continue;
+        }
+        out.push(arg.clone());
+    }
+    out
+}
+
+impl LaunchPlan {
+    /// A copy of this plan that is safe to print, log or send to a UI: credentials are redacted.
+    /// Never use the result to actually launch the game.
+    pub fn redacted(&self) -> LaunchPlan {
+        LaunchPlan {
+            jvm_args: redact_args(&self.jvm_args),
+            game_args: redact_args(&self.game_args),
+            ..self.clone()
+        }
+    }
+}
+
 pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Result<LaunchPlan> {
     let instance_dir = materialize_instance(paths, profile)?;
 
@@ -1326,4 +1371,68 @@ fn merge_versions(mut parent: VersionJson, mut child: VersionJson) -> VersionJso
     child.inherits_from = parent.inherits_from.take();
 
     child
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(values: &[&str]) -> Vec<String> {
+        values.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn redact_args_hides_access_token() {
+        let args = strings(&[
+            "--username",
+            "Steve",
+            "--uuid",
+            "069a79f444e94726a5befca90e38aaf5",
+            "--accessToken",
+            "eyJhbGciOiJIUzI1NiJ9.secret.sig",
+            "--clientId",
+            "069a79f444e94726a5befca90e38aaf5",
+            "--xuid",
+            "2535400000000000",
+        ]);
+        let redacted = redact_args(&args);
+        assert_eq!(redacted.len(), args.len());
+        assert_eq!(redacted[4], "--accessToken");
+        assert_eq!(redacted[5], REDACTED);
+        assert!(!redacted.iter().any(|a| a.contains("secret")));
+        // Non-secret values are untouched.
+        assert_eq!(redacted[1], "Steve");
+        assert_eq!(redacted[9], "2535400000000000");
+    }
+
+    #[test]
+    fn redact_args_handles_equals_form_and_trailing_flag() {
+        let redacted = redact_args(&strings(&["--accessToken=abc.def", "--session"]));
+        assert_eq!(
+            redacted,
+            strings(&["--accessToken=<redacted>", "--session"])
+        );
+    }
+
+    #[test]
+    fn launch_plan_redacted_keeps_other_fields() {
+        let plan = LaunchPlan {
+            instance_dir: PathBuf::from("/tmp/instance"),
+            java_exec: "java".to_string(),
+            jvm_args: strings(&["-Xmx2G"]),
+            classpath: "a.jar".to_string(),
+            main_class: "net.minecraft.client.main.Main".to_string(),
+            game_args: strings(&["--accessToken", "token-value", "--version", "26.3"]),
+        };
+        let redacted = plan.redacted();
+        assert_eq!(
+            redacted.game_args,
+            strings(&["--accessToken", REDACTED, "--version", "26.3"])
+        );
+        assert_eq!(redacted.jvm_args, plan.jvm_args);
+        assert_eq!(redacted.main_class, plan.main_class);
+        // The original plan (used to actually launch) is unchanged.
+        assert_eq!(plan.game_args[1], "token-value");
+    }
+
 }
