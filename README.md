@@ -159,6 +159,7 @@ shard account remove <username>               # Remove account
 shard launch <profile>                        # Launch game
 shard launch <profile> --account <username>   # Launch with specific account
 shard launch <profile> --prepare-only         # Prepare without launching
+shard launch <profile> --headless             # Hidden window, for MC-CLI automation
 ```
 
 ## Architecture

@@ -182,7 +182,15 @@ shard launch "Profile Name" --account <username>
 
 # Prepare without launching (prints the launch plan; the access token is redacted)
 shard launch "Profile Name" --prepare-only
+
+# Keep the game window hidden (for automation with the MC-CLI mod 1.6.0+)
+shard launch "Profile Name" --headless
 ```
+
+`--headless` passes `-Dmccli.headless=true` and `MCCLI_HEADLESS=1` to the game. The MC-CLI mod then
+creates the window hidden and keeps rendering, so `mccli capture` screenshots still work. On Linux
+servers without a display, the game still needs an OpenGL context: run it under a virtual display,
+for example `xvfb-run shard launch "Profile Name" --headless`.
 
 ### Configuration
 

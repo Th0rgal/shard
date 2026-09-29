@@ -164,10 +164,43 @@ pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Res
     })
 }
 
-pub fn launch(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Result<()> {
-    let plan = prepare(paths, profile, account)?;
+/// Options that change how a prepared profile is started.
+#[derive(Debug, Clone, Default)]
+pub struct LaunchOptions {
+    /// Ask MC-CLI to keep the game window hidden (`-Dmccli.headless=true`, `MCCLI_HEADLESS=1`).
+    pub headless: bool,
+}
 
-    let status = Command::new(&plan.java_exec)
+/// JVM property read by the MC-CLI mod to start with a hidden window.
+pub const MCCLI_HEADLESS_PROPERTY: &str = "-Dmccli.headless=true";
+
+impl LaunchPlan {
+    /// Applies launch options to the JVM arguments of a prepared plan.
+    pub fn with_options(mut self, options: &LaunchOptions) -> Self {
+        if options.headless && !self.jvm_args.iter().any(|arg| arg == MCCLI_HEADLESS_PROPERTY) {
+            self.jvm_args.push(MCCLI_HEADLESS_PROPERTY.to_string());
+        }
+        self
+    }
+}
+
+pub fn launch(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Result<()> {
+    launch_with(paths, profile, account, &LaunchOptions::default())
+}
+
+pub fn launch_with(
+    paths: &Paths,
+    profile: &Profile,
+    account: &LaunchAccount,
+    options: &LaunchOptions,
+) -> Result<()> {
+    let plan = prepare(paths, profile, account)?.with_options(options);
+
+    let mut command = Command::new(&plan.java_exec);
+    if options.headless {
+        command.env("MCCLI_HEADLESS", "1");
+    }
+    let status = command
         .args(&plan.jvm_args)
         .arg("-cp")
         .arg(&plan.classpath)
@@ -1536,6 +1569,23 @@ mod tests {
             redacted,
             strings(&["--accessToken=<redacted>", "--session"])
         );
+    }
+
+    #[test]
+    fn headless_option_adds_the_mccli_property_once() {
+        let plan = LaunchPlan {
+            instance_dir: PathBuf::from("/tmp/instance"),
+            java_exec: "java".to_string(),
+            jvm_args: strings(&["-Xmx2G"]),
+            classpath: String::new(),
+            main_class: "net.minecraft.client.main.Main".to_string(),
+            game_args: Vec::new(),
+        };
+        let headless = LaunchOptions { headless: true };
+        let plan = plan.with_options(&headless).with_options(&headless);
+        assert_eq!(plan.jvm_args, strings(&["-Xmx2G", MCCLI_HEADLESS_PROPERTY]));
+        let plain = plan.clone().with_options(&LaunchOptions::default());
+        assert_eq!(plain.jvm_args, plan.jvm_args);
     }
 
     #[test]
