@@ -45,7 +45,11 @@ pub struct JavaRequirement {
 
 /// Known Minecraft version to Java requirements.
 /// Listed from newest to oldest.
+///
+/// This is a fallback: when a version JSON is available its `javaVersion.majorVersion` is
+/// authoritative (see `minecraft::prepare`).
 const MC_JAVA_REQUIREMENTS: &[JavaRequirement] = &[
+    JavaRequirement { mc_version_min: "26.1", java_major: 25 },
     JavaRequirement { mc_version_min: "1.20.5", java_major: 21 },
     JavaRequirement { mc_version_min: "1.18", java_major: 17 },
     JavaRequirement { mc_version_min: "1.17", java_major: 16 },
@@ -457,45 +461,53 @@ fn collect_common_candidates(candidates: &mut Vec<PathBuf>) {
     }
 }
 
-/// Check if a version string is a snapshot (e.g., "24w14a", "23w51b")
-fn is_snapshot_version(version: &str) -> bool {
-    // Snapshot format: YYwWWx where YY is year, WW is week, x is letter
-    // Examples: 24w14a, 23w51b, 24w06a
-    if version.len() >= 5 && version.contains('w') {
-        let parts: Vec<&str> = version.split('w').collect();
-        if parts.len() == 2 {
-            // Check if first part is a 2-digit year
-            if let Some(year) = parts[0].parse::<u32>().ok() {
-                // Year should be reasonable (20-30 for 2020-2030 era snapshots)
-                return year >= 11 && year <= 99;
-            }
-        }
+/// Parse a legacy weekly snapshot id (e.g. "24w14a", "23w51b") into `(year, week)`.
+///
+/// Newer snapshot ids such as "26.4-snapshot-1" are not weekly snapshots; they are handled as
+/// pre-releases of their base version by `compare_mc_versions`.
+fn parse_weekly_snapshot(version: &str) -> Option<(u32, u32)> {
+    let (year, rest) = version.split_once('w')?;
+    if year.len() != 2 || rest.len() < 3 {
+        return None;
     }
-    false
+    let year: u32 = year.parse().ok()?;
+    let (week, suffix) = (rest.get(..2)?, rest.get(2..)?);
+    let week: u32 = week.parse().ok()?;
+    if !suffix.chars().all(|c| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    (11..=99).contains(&year).then_some((year, week))
+}
+
+/// Map a weekly snapshot to the release whose Java requirement it shares.
+fn weekly_snapshot_equivalent(year: u32, week: u32) -> (u32, u32, u32) {
+    // Java requirement changes happened mid-cycle: 21w19a (Java 16), 1.18-pre2 (Java 17,
+    // i.e. after 21w44a), 24w14a (Java 21). The Java 25 switch came with the "26.x-snapshot-N"
+    // id scheme, so every weekly snapshot is below it.
+    match (year, week) {
+        (y, w) if (y, w) >= (24, 14) => (1, 20, 5),
+        (y, w) if (y, w) > (21, 44) => (1, 18, 0),
+        (y, w) if (y, w) >= (21, 19) => (1, 17, 0),
+        _ => (1, 16, 0),
+    }
 }
 
 /// Compare two Minecraft version strings.
 /// Returns: -1 if a < b, 0 if a == b, 1 if a > b
+///
+/// Handles `1.x` releases, year-based releases (`26.3`), pre-release/rc/snapshot suffixes
+/// (`1.20.5-pre1`, `26.3-rc-1`, `26.4-snapshot-1`: compared as their base version, which is what
+/// matters for Java requirements) and legacy weekly snapshots (`24w14a`).
 fn compare_mc_versions(a: &str, b: &str) -> i32 {
-    // Handle snapshot versions - treat them as "latest" (very high version)
-    // This ensures snapshots get modern Java requirements
     let parse = |s: &str| -> (u32, u32, u32) {
-        if is_snapshot_version(s) {
-            // Extract year from snapshot (e.g., "24" from "24w14a")
-            // Map to a high version number so it gets modern Java
-            // 24wXXx -> treat as ~1.24.0 (higher than any release)
-            if let Some(year) = s.split('w').next().and_then(|y| y.parse::<u32>().ok()) {
-                return (1, year, 99);
-            }
-            // Fallback: treat as very recent version
-            return (1, 99, 0);
+        if let Some((year, week)) = parse_weekly_snapshot(s) {
+            return weekly_snapshot_equivalent(year, week);
         }
 
-        let parts: Vec<&str> = s.split('.').collect();
-        let major = parts.first().and_then(|p| p.parse().ok()).unwrap_or(0);
-        let minor = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(0);
-        let patch = parts.get(2).and_then(|p| p.parse().ok()).unwrap_or(0);
-        (major, minor, patch)
+        let base = s.split(['-', ' ']).next().unwrap_or(s);
+        let parts: Vec<&str> = base.split('.').collect();
+        let num = |idx: usize| -> u32 { parts.get(idx).and_then(|p| p.parse().ok()).unwrap_or(0) };
+        (num(0), num(1), num(2))
     };
 
     let a_parts = parse(a);
@@ -941,7 +953,43 @@ mod tests {
     }
 
     #[test]
+    fn test_required_java_for_year_based_versions() {
+        assert_eq!(get_required_java_version("26.1"), 25);
+        assert_eq!(get_required_java_version("26.3"), 25);
+        assert_eq!(get_required_java_version("26.3.1"), 25);
+        assert_eq!(get_required_java_version("26.3-rc-1"), 25);
+        assert_eq!(get_required_java_version("26.3-pre-2"), 25);
+        assert_eq!(get_required_java_version("26.4-snapshot-1"), 25);
+        assert_eq!(get_required_java_version("26.1-snapshot-1"), 25);
+        assert_eq!(get_required_java_version("1.21.11"), 21);
+        assert!(!is_java_compatible(21, "26.3"));
+        assert!(is_java_compatible(25, "26.3"));
+    }
+
+    #[test]
+    fn test_required_java_for_prereleases_and_snapshots() {
+        assert_eq!(get_required_java_version("1.20.5-pre1"), 21);
+        assert_eq!(get_required_java_version("1.21-rc1"), 21);
+        assert_eq!(get_required_java_version("24w14a"), 21);
+        assert_eq!(get_required_java_version("25w45a"), 21);
+        assert_eq!(get_required_java_version("24w13a"), 17);
+        assert_eq!(get_required_java_version("21w37a"), 16);
+        assert_eq!(get_required_java_version("20w14a"), 8);
+    }
+
+    #[test]
+    fn test_parse_weekly_snapshot() {
+        assert_eq!(parse_weekly_snapshot("24w14a"), Some((24, 14)));
+        assert_eq!(parse_weekly_snapshot("26.4-snapshot-1"), None);
+        assert_eq!(parse_weekly_snapshot("1.21"), None);
+        assert_eq!(parse_weekly_snapshot("24w14"), None);
+    }
+
+    #[test]
     fn test_compare_mc_versions() {
+        assert_eq!(compare_mc_versions("26.3", "1.21.11"), 1);
+        assert_eq!(compare_mc_versions("26.3", "26.1"), 1);
+        assert_eq!(compare_mc_versions("26.3-rc-1", "26.3"), 0);
         assert_eq!(compare_mc_versions("1.20.5", "1.20.5"), 0);
         assert_eq!(compare_mc_versions("1.20.6", "1.20.5"), 1);
         assert_eq!(compare_mc_versions("1.20.4", "1.20.5"), -1);

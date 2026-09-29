@@ -1,5 +1,5 @@
 use crate::instance::materialize_instance;
-use crate::java::{detect_installations, get_required_java_version, is_java_compatible};
+use crate::java::{detect_installations, get_required_java_version};
 use crate::paths::Paths;
 use crate::profile::{Loader, Profile};
 use crate::util::normalize_path_separator;
@@ -112,7 +112,11 @@ pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Res
     let asset_index_id = ensure_assets(paths, &version)?;
     let (classpath, natives_dir) = ensure_libraries(paths, &version, &instance_dir, &client_jars)?;
 
-    let java_exec = resolve_java(profile.runtime.java.as_deref(), &profile.mc_version);
+    let java_exec = resolve_java(
+        profile.runtime.java.as_deref(),
+        &profile.mc_version,
+        version.java_version.as_ref().map(|j| j.major_version),
+    );
     let assets_root = paths
         .minecraft_assets_objects
         .parent()
@@ -288,24 +292,86 @@ fn ensure_quilt_profile(paths: &Paths, mc_version: &str, loader_version: &str) -
     Ok(id.to_string())
 }
 
+/// NeoForge version prefix (including the trailing dot) for a Minecraft version.
+///
+/// - Legacy scheme `1.<minor>[.<patch>]` maps to `<minor>.<patch>.` (`1.21` -> `21.0.`,
+///   `1.21.1` -> `21.1.`).
+/// - Year-based scheme `<year>.<drop>[.<hotfix>]` (26.x onwards) maps to
+///   `<year>.<drop>.<hotfix>.` (`26.3` -> `26.3.0.`, `26.3.1` -> `26.3.1.`).
+///
+/// Pre-release suffixes (`-rc-1`, `-pre-1`, `-snapshot-1`) are ignored.
+fn neoforge_version_prefix(mc_version: &str) -> String {
+    let base = mc_version.split('-').next().unwrap_or(mc_version);
+    let parts: Vec<&str> = base.split('.').collect();
+    if parts.first() == Some(&"1") {
+        let minor = parts.get(1).copied().unwrap_or("0");
+        let patch = parts.get(2).copied().unwrap_or("0");
+        format!("{minor}.{patch}.")
+    } else {
+        let year = parts.first().copied().unwrap_or("0");
+        let drop = parts.get(1).copied().unwrap_or("0");
+        let hotfix = parts.get(2).copied().unwrap_or("0");
+        format!("{year}.{drop}.{hotfix}.")
+    }
+}
+
+/// Pick the newest NeoForge version for `prefix` from the maven version list.
+///
+/// The maven API filter is a plain prefix match (so `21.1.` would also match `21.10.x` without
+/// the trailing dot, and `26.1.` matches builds for 26.1.1/26.1.2), and its ordering is not
+/// strictly numeric, so select the highest build number ourselves. Snapshot builds
+/// (`...-alpha.N+snapshot-M`) are skipped when a regular build exists.
+fn pick_latest_neoforge<'a>(versions: &[&'a str], prefix: &str) -> Option<&'a str> {
+    // Numeric groups after the prefix, e.g. "33-beta" -> [33], "0-alpha.10+snapshot-6" ->
+    // [0, 10, 6]. Compared lexicographically; `None` if the version does not match the prefix.
+    let sort_key = |version: &str| -> Option<Vec<u64>> {
+        let rest = version.strip_prefix(prefix)?;
+        if !rest.starts_with(|c: char| c.is_ascii_digit()) {
+            return None;
+        }
+        Some(
+            rest.split(|c: char| !c.is_ascii_digit())
+                .filter_map(|group| group.parse().ok())
+                .collect(),
+        )
+    };
+    let candidates: Vec<&'a str> = versions
+        .iter()
+        .copied()
+        .filter(|v| sort_key(v).is_some())
+        .collect();
+    let regular: Vec<&'a str> = candidates
+        .iter()
+        .copied()
+        .filter(|v| !v.contains('+'))
+        .collect();
+    let pool = if regular.is_empty() {
+        candidates
+    } else {
+        regular
+    };
+    // max_by_key returns the last maximum, so later entries win ties.
+    pool.into_iter().max_by_key(|v| sort_key(v))
+}
+
 /// Fetch the latest NeoForge version for a given Minecraft version
 fn resolve_neoforge_latest_version(mc_version: &str) -> Result<String> {
-    // NeoForge versions are based on MC version without the leading "1." (e.g., 1.21.1 -> 21.1)
-    let filter = mc_version.strip_prefix("1.").unwrap_or(mc_version);
+    let prefix = neoforge_version_prefix(mc_version);
     let url = format!(
-        "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge?filter={}.",
-        filter
+        "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge?filter={prefix}"
     );
     let json = download_json(&url)?;
-    let versions = json.get("versions")
+    let versions: Vec<&str> = json
+        .get("versions")
         .and_then(|v| v.as_array())
-        .context("neoforge versions not an array")?;
+        .context("neoforge versions not an array")?
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
 
-    // Return the last version (they're sorted oldest first, so last is newest)
-    versions.last()
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .context("no neoforge versions found for this minecraft version")
+    pick_latest_neoforge(&versions, &prefix)
+        .map(str::to_string)
+        .with_context(|| format!("no neoforge versions found for minecraft {mc_version}"))
 }
 
 fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str, java: Option<&str>) -> Result<String> {
@@ -449,7 +515,10 @@ fn extract_version_json_from_jar(jar_path: &Path, json_name: &str) -> Result<Str
 /// Run the Forge/NeoForge installer to process libraries and generate SRG jars.
 /// The installer creates the necessary processed artifacts that aren't available via Maven.
 fn run_forge_installer(paths: &Paths, installer_path: &Path, mc_version: &str, java: Option<&str>) -> Result<()> {
-    let java = resolve_java(java, mc_version);
+    let required_java = load_version_json(paths, mc_version)
+        .ok()
+        .and_then(|v| v.java_version.map(|j| j.major_version));
+    let java = resolve_java(java, mc_version, required_java);
 
     // Derive minecraft_dir from minecraft_versions path
     let minecraft_dir = paths
@@ -871,19 +940,27 @@ fn strip_classpath_args(args: &mut Vec<String>) {
     }
 }
 
-fn resolve_java(override_java: Option<&str>, mc_version: &str) -> String {
+/// Pick a Java executable for `mc_version`.
+///
+/// `required_major` is the version JSON's `javaVersion.majorVersion` (authoritative, covers
+/// snapshots and new version schemes); the built-in table is only a fallback when it is absent.
+fn resolve_java(
+    override_java: Option<&str>,
+    mc_version: &str,
+    required_major: Option<u32>,
+) -> String {
     // If user explicitly set a Java path, use it (they know what they're doing)
     if let Some(java) = override_java {
         return java.to_string();
     }
 
-    let required_java = get_required_java_version(mc_version);
+    let required_java = required_major.unwrap_or_else(|| get_required_java_version(mc_version));
 
     // Try to find a compatible Java installation
     let installations = detect_installations();
     for install in &installations {
         if let Some(major) = install.major {
-            if is_java_compatible(major, mc_version) {
+            if major >= required_java {
                 eprintln!(
                     "Auto-selected Java {} ({}) for Minecraft {}",
                     major,
@@ -1145,6 +1222,14 @@ struct VersionJson {
     assets: Option<String>,
     #[serde(rename = "inheritsFrom")]
     inherits_from: Option<String>,
+    #[serde(rename = "javaVersion", default)]
+    java_version: Option<JavaVersionSpec>,
+}
+
+#[derive(Clone, Deserialize)]
+struct JavaVersionSpec {
+    #[serde(rename = "majorVersion")]
+    major_version: u32,
 }
 
 #[derive(Clone, Deserialize)]
@@ -1383,6 +1468,9 @@ fn merge_versions(mut parent: VersionJson, mut child: VersionJson) -> VersionJso
     if child.assets.is_none() {
         child.assets = parent.assets.take();
     }
+    if child.java_version.is_none() {
+        child.java_version = parent.java_version.take();
+    }
 
     // Continue inheritance chain if the parent also inherits from something else.
     child.inherits_from = parent.inherits_from.take();
@@ -1528,4 +1616,64 @@ mod tests {
         assert_eq!(game, strings(&["--accessToken", "token"]));
     }
 
+    #[test]
+    fn neoforge_prefix_for_legacy_and_year_versions() {
+        assert_eq!(neoforge_version_prefix("1.21"), "21.0.");
+        assert_eq!(neoforge_version_prefix("1.21.1"), "21.1.");
+        assert_eq!(neoforge_version_prefix("1.20.2"), "20.2.");
+        assert_eq!(neoforge_version_prefix("26.3"), "26.3.0.");
+        assert_eq!(neoforge_version_prefix("26.3.1"), "26.3.1.");
+        assert_eq!(neoforge_version_prefix("26.3-rc-1"), "26.3.0.");
+        assert_eq!(neoforge_version_prefix("26.4-snapshot-1"), "26.4.0.");
+    }
+
+    #[test]
+    fn pick_latest_neoforge_uses_numeric_order_and_exact_prefix() {
+        let versions = [
+            "26.1.0.0-alpha.1+snapshot-1",
+            "26.1.0.0-alpha.10+snapshot-6",
+            "26.1.0.0-alpha.2+snapshot-1",
+            "26.1.0.8-beta",
+            "26.1.0.10-beta",
+            "26.1.0.9-beta",
+            "26.1.1.0-beta",
+            "26.1.2.28-beta",
+        ];
+        assert_eq!(
+            pick_latest_neoforge(&versions, "26.1.0."),
+            Some("26.1.0.10-beta")
+        );
+        assert_eq!(
+            pick_latest_neoforge(&versions, "26.1.2."),
+            Some("26.1.2.28-beta")
+        );
+        assert_eq!(pick_latest_neoforge(&versions, "26.3.0."), None);
+
+        let snapshots = [
+            "26.1.0.0-alpha.1+snapshot-1",
+            "26.1.0.0-alpha.10+snapshot-6",
+            "26.1.0.0-alpha.2+snapshot-1",
+        ];
+        assert_eq!(
+            pick_latest_neoforge(&snapshots, "26.1.0."),
+            Some("26.1.0.0-alpha.10+snapshot-6")
+        );
+
+        // "21.1." must not match 21.10.x builds (no trailing-dot confusion).
+        let legacy = ["21.1.200", "21.1.219", "21.10.5-beta"];
+        assert_eq!(pick_latest_neoforge(&legacy, "21.1."), Some("21.1.219"));
+    }
+
+    #[test]
+    fn java_version_is_inherited_from_parent_version() {
+        let parent: VersionJson = serde_json::from_str(
+            r#"{"id":"26.3","javaVersion":{"component":"java-runtime-epsilon","majorVersion":25}}"#,
+        )
+        .unwrap();
+        let child: VersionJson =
+            serde_json::from_str(r#"{"id":"fabric-loader-0.19.5-26.3","inheritsFrom":"26.3"}"#)
+                .unwrap();
+        let merged = merge_versions(parent, child);
+        assert_eq!(merged.java_version.map(|j| j.major_version), Some(25));
+    }
 }
