@@ -483,8 +483,10 @@ fn parse_weekly_snapshot(version: &str) -> Option<(u32, u32)> {
 fn weekly_snapshot_equivalent(year: u32, week: u32) -> (u32, u32, u32) {
     // Java requirement changes happened mid-cycle: 21w19a (Java 16), 1.18-pre2 (Java 17,
     // i.e. after 21w44a), 24w14a (Java 21). The Java 25 switch came with the "26.x-snapshot-N"
-    // id scheme, so every weekly snapshot is below it.
+    // id scheme, so earlier weekly snapshots are below it.
     match (year, week) {
+        // Mojang dropped the "1." prefix in 2026; a weekly id from then on belongs to that year's line.
+        (y, _) if y >= 26 => (y, 99, 99),
         (y, w) if (y, w) >= (24, 14) => (1, 20, 5),
         (y, w) if (y, w) > (21, 44) => (1, 18, 0),
         (y, w) if (y, w) >= (21, 19) => (1, 17, 0),
@@ -931,6 +933,8 @@ mod tests {
 
     #[test]
     fn test_get_required_java_version() {
+        assert_eq!(get_required_java_version("26w10a"), 25);
+        assert_eq!(get_required_java_version("25w45a"), 21);
         assert_eq!(get_required_java_version("1.20.6"), 21);
         assert_eq!(get_required_java_version("1.20.5"), 21);
         assert_eq!(get_required_java_version("1.20.4"), 17);
