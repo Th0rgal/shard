@@ -1,5 +1,6 @@
 use crate::accounts::{
-    Account, MinecraftTokens, MsaTokens, find_account_mut, load_accounts, save_accounts, upsert_account,
+    Account, MinecraftTokens, MsaTokens, find_account_mut, load_accounts, save_accounts,
+    upsert_account,
 };
 use crate::auth::{DeviceCode, exchange_for_minecraft, poll_device_code, refresh_msa_token};
 use crate::config::load_config;
@@ -7,28 +8,33 @@ use crate::minecraft::LaunchAccount;
 use crate::paths::Paths;
 use crate::profile::Loader;
 use crate::store::store_from_url;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::PathBuf;
 
+/// Parse a loader spec: `type@version` (e.g. `fabric@0.19.5`), `type@latest`, or a bare `type`
+/// which is shorthand for `type@latest`.
 pub fn parse_loader(value: &str) -> Result<Loader> {
     let mut parts = value.splitn(2, '@');
     let loader_type = parts
         .next()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .context("loader type missing")?;
-    let version = parts
-        .next()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .context("loader version missing (expected type@version)")?;
+        .context("loader type missing (expected type or type@version)")?;
+    let version = match parts.next().map(str::trim) {
+        None => "latest",
+        Some("") => bail!("loader version missing after '@' (expected type@version)"),
+        Some(version) => version,
+    };
     Ok(Loader {
-        loader_type: loader_type.to_string(),
+        loader_type: loader_type.to_ascii_lowercase(),
         version: version.to_string(),
     })
 }
 
-pub fn resolve_input(paths: &Paths, input: &str) -> Result<(PathBuf, Option<String>, Option<String>)> {
+pub fn resolve_input(
+    paths: &Paths,
+    input: &str,
+) -> Result<(PathBuf, Option<String>, Option<String>)> {
     if input.starts_with("http://") || input.starts_with("https://") {
         let (download_path, file_name) = store_from_url(paths, input)?;
         Ok((download_path, Some(input.to_string()), Some(file_name)))
@@ -195,4 +201,46 @@ pub fn ensure_fresh_account(paths: &Paths, account_id: Option<String>) -> Result
 
     save_accounts(paths, &accounts)?;
     Ok(updated_account)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_loader_with_version() {
+        let loader = parse_loader("fabric@0.19.5").unwrap();
+        assert_eq!(loader.loader_type, "fabric");
+        assert_eq!(loader.version, "0.19.5");
+
+        let loader = parse_loader("neoforge@26.3.0.33-beta").unwrap();
+        assert_eq!(loader.loader_type, "neoforge");
+        assert_eq!(loader.version, "26.3.0.33-beta");
+    }
+
+    #[test]
+    fn parse_loader_bare_type_means_latest() {
+        let loader = parse_loader("fabric").unwrap();
+        assert_eq!(loader.loader_type, "fabric");
+        assert_eq!(loader.version, "latest");
+
+        let loader = parse_loader(" NeoForge ").unwrap();
+        assert_eq!(loader.loader_type, "neoforge");
+        assert_eq!(loader.version, "latest");
+    }
+
+    #[test]
+    fn parse_loader_explicit_latest() {
+        let loader = parse_loader("quilt@latest").unwrap();
+        assert_eq!(loader.loader_type, "quilt");
+        assert_eq!(loader.version, "latest");
+    }
+
+    #[test]
+    fn parse_loader_rejects_invalid() {
+        assert!(parse_loader("").is_err());
+        assert!(parse_loader("@0.19.5").is_err());
+        assert!(parse_loader("fabric@").is_err());
+        assert!(parse_loader("fabric@  ").is_err());
+    }
 }
