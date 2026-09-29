@@ -286,10 +286,14 @@ pub fn exchange_for_minecraft(ms_access_token: &str) -> Result<MinecraftAuth> {
     } else {
         user_hash
     };
-    let xuid = xsts_xuid.or(xuid);
-
     let mc_token = minecraft_login(&xsts_token, &uhs)?;
     let profile = minecraft_profile(&mc_token.access_token)?;
+
+    // The XSTS token for api.minecraftservices.com usually carries only `uhs`, not the xuid,
+    // so fall back to the `xuid` claim embedded in the Minecraft access token.
+    let xuid = xsts_xuid
+        .or(xuid)
+        .or_else(|| xuid_from_minecraft_token(&mc_token.access_token));
 
     Ok(MinecraftAuth {
         access_token: mc_token.access_token,
@@ -298,6 +302,25 @@ pub fn exchange_for_minecraft(ms_access_token: &str) -> Result<MinecraftAuth> {
         username: profile.name,
         xuid,
     })
+}
+
+/// Extract the Xbox user id (`xuid` claim) from a Minecraft services access token.
+///
+/// The token is a JWT; only its (unverified) payload is decoded. Returns `None` if the token is
+/// not a JWT or has no non-empty `xuid` claim.
+pub fn xuid_from_minecraft_token(access_token: &str) -> Option<String> {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    let payload = access_token.split('.').nth(1)?;
+    let bytes = URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')).ok()?;
+    let claims: Value = serde_json::from_slice(&bytes).ok()?;
+    let xuid = match claims.get("xuid")? {
+        Value::String(s) => s.trim().to_string(),
+        Value::Number(n) => n.to_string(),
+        _ => return None,
+    };
+    if xuid.is_empty() { None } else { Some(xuid) }
 }
 
 fn xbox_live_auth(ms_access_token: &str) -> Result<(String, String, Option<String>)> {
@@ -462,5 +485,40 @@ fn format_xsts_error(prefix: &str, resp: reqwest::blocking::Response) -> anyhow:
         anyhow::anyhow!("{prefix}: {status} {message} (XErr={xerr:?}). {hint}")
     } else {
         anyhow::anyhow!("{prefix}: {status} {message} (XErr={xerr:?})")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+    fn fake_jwt(payload: &str) -> String {
+        format!(
+            "{}.{}.signature",
+            URL_SAFE_NO_PAD.encode(r#"{"alg":"HS256"}"#),
+            URL_SAFE_NO_PAD.encode(payload)
+        )
+    }
+
+    #[test]
+    fn xuid_is_read_from_minecraft_token_claims() {
+        let token = fake_jwt(r#"{"xuid":"2535400000000000","sub":"abc","profiles":{"mc":"x"}}"#);
+        assert_eq!(
+            xuid_from_minecraft_token(&token).as_deref(),
+            Some("2535400000000000")
+        );
+    }
+
+    #[test]
+    fn xuid_missing_or_invalid_token_yields_none() {
+        assert_eq!(
+            xuid_from_minecraft_token(&fake_jwt(r#"{"sub":"abc"}"#)),
+            None
+        );
+        assert_eq!(xuid_from_minecraft_token(&fake_jwt(r#"{"xuid":""}"#)), None);
+        assert_eq!(xuid_from_minecraft_token("not-a-jwt"), None);
+        assert_eq!(xuid_from_minecraft_token("a.!!!.c"), None);
     }
 }

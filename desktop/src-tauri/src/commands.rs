@@ -7,7 +7,7 @@ use shard::java::{JavaInstallation, JavaValidation, AdoptiumRelease, detect_inst
 use shard::library::{Library, LibraryItem, LibraryFilter, LibraryItemInput, LibraryContentType, LibraryStats, Tag, ImportResult, UnusedItemsSummary, PurgeResult};
 use shard::logs::{LogEntry, LogFile, LogWatcher, list_log_files, list_crash_reports, read_log_file, read_log_tail};
 use shard::minecraft::{LaunchPlan, prepare};
-use shard::ops::{finish_device_code_flow, parse_loader, resolve_input, resolve_launch_account, ensure_fresh_account};
+use shard::ops::{finish_device_code_flow, parse_loader, pin_latest_loader, resolve_input, resolve_launch_account, ensure_fresh_account};
 use shard::paths::Paths;
 use shard::profile::{ContentRef, Loader, Profile, Runtime, clone_profile, create_profile, delete_profile, diff_profiles, list_profiles, load_profile, remove_mod, remove_resourcepack, remove_shaderpack, rename_profile, save_profile, upsert_mod, upsert_resourcepack, upsert_shaderpack};
 use shard::skin::{
@@ -154,7 +154,8 @@ pub fn create_profile_cmd(input: CreateProfileInput) -> Result<Profile, String> 
     let loader = match (input.loader_type, input.loader_version) {
         (Some(loader_type), Some(loader_version)) => {
             let loader_string = format!("{}@{}", loader_type.trim(), loader_version.trim());
-            Some(parse_loader(&loader_string).map_err(|e| e.to_string())?)
+            let loader = parse_loader(&loader_string).map_err(|e| e.to_string())?;
+            Some(pin_latest_loader(loader, &input.mc_version))
         }
         (None, None) => None,
         _ => {
@@ -496,7 +497,9 @@ fn run_launch(app: AppHandle, profile_id: String, account_id: Option<String>) ->
 }
 
 impl From<LaunchPlan> for LaunchPlanDto {
+    /// The DTO is display-only (launch plan modal), so credentials are redacted.
     fn from(plan: LaunchPlan) -> Self {
+        let plan = plan.redacted();
         Self {
             instance_dir: plan.instance_dir.to_string_lossy().to_string(),
             java_exec: plan.java_exec,
@@ -715,9 +718,14 @@ pub fn create_profile_from_template_cmd(input: CreateProfileInput) -> Result<Pro
         init_builtin_templates(&paths).map_err(|e| e.to_string())?;
         let template = load_template(&paths, &template_id).map_err(|e| e.to_string())?;
 
-        let loader = template.loader.map(|l| Loader {
-            loader_type: l.loader_type,
-            version: l.version,
+        let loader = template.loader.map(|l| {
+            pin_latest_loader(
+                Loader {
+                    loader_type: l.loader_type,
+                    version: l.version,
+                },
+                &template.mc_version,
+            )
         });
 
         let runtime = Runtime {
@@ -788,7 +796,8 @@ pub fn create_profile_from_template_cmd(input: CreateProfileInput) -> Result<Pro
         let loader = match (input.loader_type, input.loader_version) {
             (Some(loader_type), Some(loader_version)) => {
                 let loader_string = format!("{}@{}", loader_type.trim(), loader_version.trim());
-                Some(parse_loader(&loader_string).map_err(|e| e.to_string())?)
+                let loader = parse_loader(&loader_string).map_err(|e| e.to_string())?;
+                Some(pin_latest_loader(loader, &input.mc_version))
             }
             (None, None) => None,
             _ => return Err("loader type and version must both be provided".to_string()),

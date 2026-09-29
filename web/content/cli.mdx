@@ -50,7 +50,18 @@ shard profile list
 # Create a new profile
 shard profile create "Profile Name" --mc 1.21.4
 shard profile create "Modded" --mc 1.21.4 --loader fabric
+shard profile create "Pinned" --mc 26.3 --loader fabric@0.19.5
+shard profile create "NeoForge" --mc 26.3 --loader neoforge@latest
 
+```
+
+`--loader` accepts `fabric`, `quilt`, `forge` or `neoforge`, optionally followed by
+`@<version>`. A bare loader type is shorthand for `<type>@latest`. `latest` is resolved to
+a concrete version when the profile is created and stored in `profile.json`, so the loader
+does not change silently between launches (if it cannot be resolved, e.g. offline, `latest`
+is kept and resolved at launch).
+
+```bash
 # Rename a profile
 shard profile rename "Old Name" "New Name"
 
@@ -169,7 +180,7 @@ shard launch "Profile Name"
 # Launch with specific account
 shard launch "Profile Name" --account <username>
 
-# Prepare without launching
+# Prepare without launching (prints the launch plan; the access token is redacted)
 shard launch "Profile Name" --prepare-only
 ```
 

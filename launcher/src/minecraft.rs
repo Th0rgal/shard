@@ -1,5 +1,5 @@
 use crate::instance::materialize_instance;
-use crate::java::{detect_installations, get_required_java_version, is_java_compatible};
+use crate::java::{detect_installations, get_required_java_version};
 use crate::paths::Paths;
 use crate::profile::{Loader, Profile};
 use crate::util::normalize_path_separator;
@@ -37,6 +37,51 @@ pub struct LaunchPlan {
     pub game_args: Vec<String>,
 }
 
+/// Placeholder printed in place of secret argument values.
+pub const REDACTED: &str = "<redacted>";
+
+/// Game/JVM argument flags whose value is a credential and must never be printed or logged.
+const SECRET_ARG_FLAGS: &[&str] = &["--accessToken", "--session"];
+
+/// Return a copy of `args` with the values of secret flags (e.g. `--accessToken`) replaced by
+/// [`REDACTED`]. Handles both `--flag value` and `--flag=value` forms.
+pub fn redact_args(args: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len());
+    let mut redact_next = false;
+    for arg in args {
+        if redact_next {
+            out.push(REDACTED.to_string());
+            redact_next = false;
+            continue;
+        }
+        if SECRET_ARG_FLAGS.contains(&arg.as_str()) {
+            redact_next = true;
+            out.push(arg.clone());
+            continue;
+        }
+        if let Some((flag, _)) = arg.split_once('=')
+            && SECRET_ARG_FLAGS.contains(&flag)
+        {
+            out.push(format!("{flag}={REDACTED}"));
+            continue;
+        }
+        out.push(arg.clone());
+    }
+    out
+}
+
+impl LaunchPlan {
+    /// A copy of this plan that is safe to print, log or send to a UI: credentials are redacted.
+    /// Never use the result to actually launch the game.
+    pub fn redacted(&self) -> LaunchPlan {
+        LaunchPlan {
+            jvm_args: redact_args(&self.jvm_args),
+            game_args: redact_args(&self.game_args),
+            ..self.clone()
+        }
+    }
+}
+
 pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Result<LaunchPlan> {
     let instance_dir = materialize_instance(paths, profile)?;
 
@@ -67,7 +112,11 @@ pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Res
     let asset_index_id = ensure_assets(paths, &version)?;
     let (classpath, natives_dir) = ensure_libraries(paths, &version, &instance_dir, &client_jars)?;
 
-    let java_exec = resolve_java(profile.runtime.java.as_deref(), &profile.mc_version);
+    let java_exec = resolve_java(
+        profile.runtime.java.as_deref(),
+        &profile.mc_version,
+        version.java_version.as_ref().map(|j| j.major_version),
+    );
     let assets_root = paths
         .minecraft_assets_objects
         .parent()
@@ -85,7 +134,8 @@ pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Res
         account,
     );
 
-    let (mut jvm_args, game_args) = build_args(&version, &vars)?;
+    let (mut jvm_args, mut game_args) = build_args(&version, &vars)?;
+    drop_empty_optional_args(&mut game_args);
 
     if let Some(memory) = &profile.runtime.memory
         && !jvm_args.iter().any(|arg| arg.starts_with("-Xmx")) {
@@ -242,24 +292,105 @@ fn ensure_quilt_profile(paths: &Paths, mc_version: &str, loader_version: &str) -
     Ok(id.to_string())
 }
 
+/// NeoForge version prefix (including the trailing dot) for a Minecraft version.
+///
+/// - Legacy scheme `1.<minor>[.<patch>]` maps to `<minor>.<patch>.` (`1.21` -> `21.0.`,
+///   `1.21.1` -> `21.1.`).
+/// - Year-based scheme `<year>.<drop>[.<hotfix>]` (26.x onwards) maps to
+///   `<year>.<drop>.<hotfix>.` (`26.3` -> `26.3.0.`, `26.3.1` -> `26.3.1.`).
+///
+/// Pre-release suffixes (`-rc-1`, `-pre-1`, `-snapshot-1`) are ignored.
+fn neoforge_version_prefix(mc_version: &str) -> String {
+    let base = mc_version.split('-').next().unwrap_or(mc_version);
+    let parts: Vec<&str> = base.split('.').collect();
+    if parts.first() == Some(&"1") {
+        let minor = parts.get(1).copied().unwrap_or("0");
+        let patch = parts.get(2).copied().unwrap_or("0");
+        format!("{minor}.{patch}.")
+    } else {
+        let year = parts.first().copied().unwrap_or("0");
+        let drop = parts.get(1).copied().unwrap_or("0");
+        let hotfix = parts.get(2).copied().unwrap_or("0");
+        format!("{year}.{drop}.{hotfix}.")
+    }
+}
+
+/// Pick the newest NeoForge version for `prefix` from the maven version list.
+///
+/// The maven API filter is a plain prefix match (so `21.1.` would also match `21.10.x` without
+/// the trailing dot, and `26.1.` matches builds for 26.1.1/26.1.2), and its ordering is not
+/// strictly numeric, so select the highest build number ourselves. Snapshot builds
+/// (`...-alpha.N+snapshot-M`) are skipped when a regular build exists.
+fn pick_latest_neoforge<'a>(versions: &[&'a str], prefix: &str) -> Option<&'a str> {
+    // Numeric groups after the prefix, e.g. "33-beta" -> [33], "0-alpha.10+snapshot-6" ->
+    // [0, 10, 6]. Compared lexicographically; `None` if the version does not match the prefix.
+    let sort_key = |version: &str| -> Option<Vec<u64>> {
+        let rest = version.strip_prefix(prefix)?;
+        if !rest.starts_with(|c: char| c.is_ascii_digit()) {
+            return None;
+        }
+        Some(
+            rest.split(|c: char| !c.is_ascii_digit())
+                .filter_map(|group| group.parse().ok())
+                .collect(),
+        )
+    };
+    let candidates: Vec<&'a str> = versions
+        .iter()
+        .copied()
+        .filter(|v| sort_key(v).is_some())
+        .collect();
+    let regular: Vec<&'a str> = candidates
+        .iter()
+        .copied()
+        .filter(|v| !v.contains('+'))
+        .collect();
+    let pool = if regular.is_empty() {
+        candidates
+    } else {
+        regular
+    };
+    // max_by_key returns the last maximum, so later entries win ties.
+    pool.into_iter().max_by_key(|v| sort_key(v))
+}
+
 /// Fetch the latest NeoForge version for a given Minecraft version
 fn resolve_neoforge_latest_version(mc_version: &str) -> Result<String> {
-    // NeoForge versions are based on MC version without the leading "1." (e.g., 1.21.1 -> 21.1)
-    let filter = mc_version.strip_prefix("1.").unwrap_or(mc_version);
+    let prefix = neoforge_version_prefix(mc_version);
     let url = format!(
-        "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge?filter={}.",
-        filter
+        "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge?filter={prefix}"
     );
     let json = download_json(&url)?;
-    let versions = json.get("versions")
+    let versions: Vec<&str> = json
+        .get("versions")
         .and_then(|v| v.as_array())
-        .context("neoforge versions not an array")?;
+        .context("neoforge versions not an array")?
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
 
-    // Return the last version (they're sorted oldest first, so last is newest)
-    versions.last()
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .context("no neoforge versions found for this minecraft version")
+    pick_latest_neoforge(&versions, &prefix)
+        .map(str::to_string)
+        .with_context(|| format!("no neoforge versions found for minecraft {mc_version}"))
+}
+
+/// Resolve the `latest` alias of a loader version to a concrete version for `mc_version`.
+/// Any other version string is returned unchanged.
+pub fn resolve_loader_version(
+    loader_type: &str,
+    mc_version: &str,
+    loader_version: &str,
+) -> Result<String> {
+    if !loader_version.eq_ignore_ascii_case("latest") {
+        return Ok(loader_version.to_string());
+    }
+    match loader_type {
+        "fabric" => resolve_fabric_latest_version(),
+        "quilt" => resolve_quilt_latest_version(),
+        "neoforge" => resolve_neoforge_latest_version(mc_version),
+        "forge" => resolve_forge_latest_version(mc_version),
+        other => bail!("unsupported loader type: {other}"),
+    }
 }
 
 fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str, java: Option<&str>) -> Result<String> {
@@ -403,7 +534,10 @@ fn extract_version_json_from_jar(jar_path: &Path, json_name: &str) -> Result<Str
 /// Run the Forge/NeoForge installer to process libraries and generate SRG jars.
 /// The installer creates the necessary processed artifacts that aren't available via Maven.
 fn run_forge_installer(paths: &Paths, installer_path: &Path, mc_version: &str, java: Option<&str>) -> Result<()> {
-    let java = resolve_java(java, mc_version);
+    let required_java = load_version_json(paths, mc_version)
+        .ok()
+        .and_then(|v| v.java_version.map(|j| j.major_version));
+    let java = resolve_java(java, mc_version, required_java);
 
     // Derive minecraft_dir from minecraft_versions path
     let minecraft_dir = paths
@@ -777,12 +911,28 @@ fn build_var_map(
     );
     vars.insert("classpath".into(), classpath.to_string());
     vars.insert("user_properties".into(), "{}".to_string());
-    // auth_xuid should always be present (empty string if not available)
-    vars.insert(
-        "auth_xuid".into(),
-        account.xuid.clone().unwrap_or_default(),
-    );
+    // auth_xuid must always be substituted; when unknown it is empty and the
+    // `--xuid ""` pair is dropped afterwards by `drop_empty_optional_args`.
+    vars.insert("auth_xuid".into(), account.xuid.clone().unwrap_or_default());
     vars
+}
+
+/// Game flags that vanilla declares with an optional value defaulting to "" (joptsimple
+/// `withOptionalArg().defaultsTo("")`). When we have no value for them, passing `--flag ""`
+/// is noise (and looks like a bug), so drop the flag entirely.
+const OPTIONAL_GAME_FLAGS: &[&str] = &["--xuid", "--clientId"];
+
+fn drop_empty_optional_args(args: &mut Vec<String>) {
+    let mut idx = 0;
+    while idx < args.len() {
+        if OPTIONAL_GAME_FLAGS.contains(&args[idx].as_str())
+            && args.get(idx + 1).is_some_and(|value| value.is_empty())
+        {
+            args.drain(idx..idx + 2);
+            continue;
+        }
+        idx += 1;
+    }
 }
 
 fn ensure_jvm_flag(args: &mut Vec<String>, flag: &str, value: &Path) -> Result<()> {
@@ -809,19 +959,27 @@ fn strip_classpath_args(args: &mut Vec<String>) {
     }
 }
 
-fn resolve_java(override_java: Option<&str>, mc_version: &str) -> String {
+/// Pick a Java executable for `mc_version`.
+///
+/// `required_major` is the version JSON's `javaVersion.majorVersion` (authoritative, covers
+/// snapshots and new version schemes); the built-in table is only a fallback when it is absent.
+fn resolve_java(
+    override_java: Option<&str>,
+    mc_version: &str,
+    required_major: Option<u32>,
+) -> String {
     // If user explicitly set a Java path, use it (they know what they're doing)
     if let Some(java) = override_java {
         return java.to_string();
     }
 
-    let required_java = get_required_java_version(mc_version);
+    let required_java = required_major.unwrap_or_else(|| get_required_java_version(mc_version));
 
     // Try to find a compatible Java installation
     let installations = detect_installations();
     for install in &installations {
         if let Some(major) = install.major {
-            if is_java_compatible(major, mc_version) {
+            if major >= required_java {
                 eprintln!(
                     "Auto-selected Java {} ({}) for Minecraft {}",
                     major,
@@ -1083,6 +1241,14 @@ struct VersionJson {
     assets: Option<String>,
     #[serde(rename = "inheritsFrom")]
     inherits_from: Option<String>,
+    #[serde(rename = "javaVersion", default)]
+    java_version: Option<JavaVersionSpec>,
+}
+
+#[derive(Clone, Deserialize)]
+struct JavaVersionSpec {
+    #[serde(rename = "majorVersion")]
+    major_version: u32,
 }
 
 #[derive(Clone, Deserialize)]
@@ -1321,9 +1487,221 @@ fn merge_versions(mut parent: VersionJson, mut child: VersionJson) -> VersionJso
     if child.assets.is_none() {
         child.assets = parent.assets.take();
     }
+    if child.java_version.is_none() {
+        child.java_version = parent.java_version.take();
+    }
 
     // Continue inheritance chain if the parent also inherits from something else.
     child.inherits_from = parent.inherits_from.take();
 
     child
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(values: &[&str]) -> Vec<String> {
+        values.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn redact_args_hides_access_token() {
+        let args = strings(&[
+            "--username",
+            "Steve",
+            "--uuid",
+            "069a79f444e94726a5befca90e38aaf5",
+            "--accessToken",
+            "eyJhbGciOiJIUzI1NiJ9.secret.sig",
+            "--clientId",
+            "069a79f444e94726a5befca90e38aaf5",
+            "--xuid",
+            "2535400000000000",
+        ]);
+        let redacted = redact_args(&args);
+        assert_eq!(redacted.len(), args.len());
+        assert_eq!(redacted[4], "--accessToken");
+        assert_eq!(redacted[5], REDACTED);
+        assert!(!redacted.iter().any(|a| a.contains("secret")));
+        // Non-secret values are untouched.
+        assert_eq!(redacted[1], "Steve");
+        assert_eq!(redacted[9], "2535400000000000");
+    }
+
+    #[test]
+    fn redact_args_handles_equals_form_and_trailing_flag() {
+        let redacted = redact_args(&strings(&["--accessToken=abc.def", "--session"]));
+        assert_eq!(
+            redacted,
+            strings(&["--accessToken=<redacted>", "--session"])
+        );
+    }
+
+    #[test]
+    fn launch_plan_redacted_keeps_other_fields() {
+        let plan = LaunchPlan {
+            instance_dir: PathBuf::from("/tmp/instance"),
+            java_exec: "java".to_string(),
+            jvm_args: strings(&["-Xmx2G"]),
+            classpath: "a.jar".to_string(),
+            main_class: "net.minecraft.client.main.Main".to_string(),
+            game_args: strings(&["--accessToken", "token-value", "--version", "26.3"]),
+        };
+        let redacted = plan.redacted();
+        assert_eq!(
+            redacted.game_args,
+            strings(&["--accessToken", REDACTED, "--version", "26.3"])
+        );
+        assert_eq!(redacted.jvm_args, plan.jvm_args);
+        assert_eq!(redacted.main_class, plan.main_class);
+        // The original plan (used to actually launch) is unchanged.
+        assert_eq!(plan.game_args[1], "token-value");
+    }
+
+    #[test]
+    fn empty_xuid_is_dropped_but_known_xuid_kept() {
+        let mut args = strings(&[
+            "--clientId",
+            "abc",
+            "--xuid",
+            "",
+            "--versionType",
+            "release",
+        ]);
+        drop_empty_optional_args(&mut args);
+        assert_eq!(
+            args,
+            strings(&["--clientId", "abc", "--versionType", "release"])
+        );
+
+        let mut args = strings(&["--xuid", "2535400000000000", "--versionType", "release"]);
+        drop_empty_optional_args(&mut args);
+        assert_eq!(
+            args,
+            strings(&["--xuid", "2535400000000000", "--versionType", "release"])
+        );
+
+        // A trailing flag without value is left alone.
+        let mut args = strings(&["--xuid"]);
+        drop_empty_optional_args(&mut args);
+        assert_eq!(args, strings(&["--xuid"]));
+    }
+
+    #[test]
+    fn xuid_substitution_from_version_arguments() {
+        let account = LaunchAccount {
+            uuid: "uuid".to_string(),
+            username: "Steve".to_string(),
+            access_token: "token".to_string(),
+            xuid: Some("2535400000000000".to_string()),
+        };
+        let version: VersionJson = serde_json::from_str(
+            r#"{"id":"26.3","arguments":{"game":["--accessToken","${auth_access_token}","--xuid","${auth_xuid}"],"jvm":[]}}"#,
+        )
+        .unwrap();
+        let vars = build_var_map(
+            Path::new("/g"),
+            Path::new("/a"),
+            "30",
+            "cp",
+            Path::new("/n"),
+            Path::new("/l"),
+            &version,
+            &account,
+        );
+        let (_, game) = build_args(&version, &vars).unwrap();
+        assert_eq!(
+            game,
+            strings(&["--accessToken", "token", "--xuid", "2535400000000000"])
+        );
+
+        let account = LaunchAccount {
+            xuid: None,
+            ..account
+        };
+        let vars = build_var_map(
+            Path::new("/g"),
+            Path::new("/a"),
+            "30",
+            "cp",
+            Path::new("/n"),
+            Path::new("/l"),
+            &version,
+            &account,
+        );
+        let (_, mut game) = build_args(&version, &vars).unwrap();
+        drop_empty_optional_args(&mut game);
+        assert_eq!(game, strings(&["--accessToken", "token"]));
+    }
+
+    #[test]
+    fn neoforge_prefix_for_legacy_and_year_versions() {
+        assert_eq!(neoforge_version_prefix("1.21"), "21.0.");
+        assert_eq!(neoforge_version_prefix("1.21.1"), "21.1.");
+        assert_eq!(neoforge_version_prefix("1.20.2"), "20.2.");
+        assert_eq!(neoforge_version_prefix("26.3"), "26.3.0.");
+        assert_eq!(neoforge_version_prefix("26.3.1"), "26.3.1.");
+        assert_eq!(neoforge_version_prefix("26.3-rc-1"), "26.3.0.");
+        assert_eq!(neoforge_version_prefix("26.4-snapshot-1"), "26.4.0.");
+    }
+
+    #[test]
+    fn pick_latest_neoforge_uses_numeric_order_and_exact_prefix() {
+        let versions = [
+            "26.1.0.0-alpha.1+snapshot-1",
+            "26.1.0.0-alpha.10+snapshot-6",
+            "26.1.0.0-alpha.2+snapshot-1",
+            "26.1.0.8-beta",
+            "26.1.0.10-beta",
+            "26.1.0.9-beta",
+            "26.1.1.0-beta",
+            "26.1.2.28-beta",
+        ];
+        assert_eq!(
+            pick_latest_neoforge(&versions, "26.1.0."),
+            Some("26.1.0.10-beta")
+        );
+        assert_eq!(
+            pick_latest_neoforge(&versions, "26.1.2."),
+            Some("26.1.2.28-beta")
+        );
+        assert_eq!(pick_latest_neoforge(&versions, "26.3.0."), None);
+
+        let snapshots = [
+            "26.1.0.0-alpha.1+snapshot-1",
+            "26.1.0.0-alpha.10+snapshot-6",
+            "26.1.0.0-alpha.2+snapshot-1",
+        ];
+        assert_eq!(
+            pick_latest_neoforge(&snapshots, "26.1.0."),
+            Some("26.1.0.0-alpha.10+snapshot-6")
+        );
+
+        // "21.1." must not match 21.10.x builds (no trailing-dot confusion).
+        let legacy = ["21.1.200", "21.1.219", "21.10.5-beta"];
+        assert_eq!(pick_latest_neoforge(&legacy, "21.1."), Some("21.1.219"));
+    }
+
+    #[test]
+    fn resolve_loader_version_passes_through_concrete_versions() {
+        assert_eq!(
+            resolve_loader_version("fabric", "26.3", "0.19.5").unwrap(),
+            "0.19.5"
+        );
+        assert!(resolve_loader_version("unknown", "26.3", "latest").is_err());
+    }
+
+    #[test]
+    fn java_version_is_inherited_from_parent_version() {
+        let parent: VersionJson = serde_json::from_str(
+            r#"{"id":"26.3","javaVersion":{"component":"java-runtime-epsilon","majorVersion":25}}"#,
+        )
+        .unwrap();
+        let child: VersionJson =
+            serde_json::from_str(r#"{"id":"fabric-loader-0.19.5-26.3","inheritsFrom":"26.3"}"#)
+                .unwrap();
+        let merged = merge_versions(parent, child);
+        assert_eq!(merged.java_version.map(|j| j.major_version), Some(25));
+    }
 }

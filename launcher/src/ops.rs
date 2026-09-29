@@ -1,34 +1,70 @@
 use crate::accounts::{
-    Account, MinecraftTokens, MsaTokens, find_account_mut, load_accounts, save_accounts, upsert_account,
+    Account, MinecraftTokens, MsaTokens, find_account_mut, load_accounts, save_accounts,
+    upsert_account,
 };
-use crate::auth::{DeviceCode, exchange_for_minecraft, poll_device_code, refresh_msa_token};
+use crate::auth::{
+    DeviceCode, exchange_for_minecraft, poll_device_code, refresh_msa_token,
+    xuid_from_minecraft_token,
+};
 use crate::config::load_config;
-use crate::minecraft::LaunchAccount;
+use crate::minecraft::{LaunchAccount, resolve_loader_version};
 use crate::paths::Paths;
 use crate::profile::Loader;
 use crate::store::store_from_url;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::PathBuf;
 
+/// Parse a loader spec: `type@version` (e.g. `fabric@0.19.5`), `type@latest`, or a bare `type`
+/// which is shorthand for `type@latest`.
 pub fn parse_loader(value: &str) -> Result<Loader> {
     let mut parts = value.splitn(2, '@');
     let loader_type = parts
         .next()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .context("loader type missing")?;
-    let version = parts
-        .next()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .context("loader version missing (expected type@version)")?;
+        .context("loader type missing (expected type or type@version)")?;
+    let version = match parts.next().map(str::trim) {
+        None => "latest",
+        Some("") => bail!("loader version missing after '@' (expected type@version)"),
+        Some(version) => version,
+    };
     Ok(Loader {
-        loader_type: loader_type.to_string(),
+        loader_type: loader_type.to_ascii_lowercase(),
         version: version.to_string(),
     })
 }
 
-pub fn resolve_input(paths: &Paths, input: &str) -> Result<(PathBuf, Option<String>, Option<String>)> {
+/// Pin a `<type>@latest` loader to the concrete version that is latest right now.
+///
+/// Profiles are reproducible manifests: storing the literal `latest` would make the loader
+/// silently change between launches whenever upstream publishes a new build. So `latest` means
+/// "latest at profile creation" and the resolved version is written to the profile. If the
+/// version cannot be resolved (e.g. offline), `latest` is kept with a warning and will be
+/// resolved at launch time as before.
+pub fn pin_latest_loader(loader: Loader, mc_version: &str) -> Loader {
+    if !loader.version.eq_ignore_ascii_case("latest") {
+        return loader;
+    }
+    match resolve_loader_version(&loader.loader_type, mc_version, &loader.version) {
+        Ok(version) => Loader {
+            loader_type: loader.loader_type,
+            version,
+        },
+        Err(err) => {
+            eprintln!(
+                "warning: could not resolve latest {} version for Minecraft {mc_version} ({err:#}); \
+                 keeping 'latest' (resolved at each launch)",
+                loader.loader_type
+            );
+            loader
+        }
+    }
+}
+
+pub fn resolve_input(
+    paths: &Paths,
+    input: &str,
+) -> Result<(PathBuf, Option<String>, Option<String>)> {
     if input.starts_with("http://") || input.starts_with("https://") {
         let (download_path, file_name) = store_from_url(paths, input)?;
         Ok((download_path, Some(input.to_string()), Some(file_name)))
@@ -81,6 +117,14 @@ pub fn finish_device_code_flow(
     Ok(account)
 }
 
+/// Accounts added before xuid extraction was fixed have no stored xuid; recover it from the
+/// `xuid` claim of the (still valid) Minecraft access token so `--xuid` is populated.
+fn backfill_xuid(account: &mut Account) {
+    if account.xuid.as_deref().is_none_or(str::is_empty) {
+        account.xuid = xuid_from_minecraft_token(&account.minecraft.access_token);
+    }
+}
+
 pub fn resolve_launch_account(paths: &Paths, account_id: Option<String>) -> Result<LaunchAccount> {
     let config = load_config(paths)?;
     let client_id = config.msa_client_id.context(
@@ -126,6 +170,7 @@ pub fn resolve_launch_account(paths: &Paths, account_id: Option<String>) -> Resu
             account.xuid = minecraft_auth.xuid;
             account.uuid = minecraft_auth.uuid;
         }
+        backfill_xuid(account);
 
         (account.clone(), old_uuid)
     };
@@ -189,10 +234,53 @@ pub fn ensure_fresh_account(paths: &Paths, account_id: Option<String>) -> Result
             account.xuid = minecraft_auth.xuid;
             account.uuid = minecraft_auth.uuid;
         }
+        backfill_xuid(account);
 
         account.clone()
     };
 
     save_accounts(paths, &accounts)?;
     Ok(updated_account)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_loader_with_version() {
+        let loader = parse_loader("fabric@0.19.5").unwrap();
+        assert_eq!(loader.loader_type, "fabric");
+        assert_eq!(loader.version, "0.19.5");
+
+        let loader = parse_loader("neoforge@26.3.0.33-beta").unwrap();
+        assert_eq!(loader.loader_type, "neoforge");
+        assert_eq!(loader.version, "26.3.0.33-beta");
+    }
+
+    #[test]
+    fn parse_loader_bare_type_means_latest() {
+        let loader = parse_loader("fabric").unwrap();
+        assert_eq!(loader.loader_type, "fabric");
+        assert_eq!(loader.version, "latest");
+
+        let loader = parse_loader(" NeoForge ").unwrap();
+        assert_eq!(loader.loader_type, "neoforge");
+        assert_eq!(loader.version, "latest");
+    }
+
+    #[test]
+    fn parse_loader_explicit_latest() {
+        let loader = parse_loader("quilt@latest").unwrap();
+        assert_eq!(loader.loader_type, "quilt");
+        assert_eq!(loader.version, "latest");
+    }
+
+    #[test]
+    fn parse_loader_rejects_invalid() {
+        assert!(parse_loader("").is_err());
+        assert!(parse_loader("@0.19.5").is_err());
+        assert!(parse_loader("fabric@").is_err());
+        assert!(parse_loader("fabric@  ").is_err());
+    }
 }
