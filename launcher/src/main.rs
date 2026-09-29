@@ -18,7 +18,7 @@ use shard::logs::{
     filter_by_level, format_entry, list_crash_reports, list_log_files, read_log_file,
     read_log_tail, search_logs, watch_log, LogLevel,
 };
-use shard::minecraft::{launch, prepare};
+use shard::minecraft::{launch_with, prepare, LaunchOptions};
 use shard::modpack::import_mrpack;
 use shard::ops::{
     finish_device_code_flow, parse_loader, pin_latest_loader, resolve_input, resolve_launch_account,
@@ -138,6 +138,9 @@ enum Command {
         account: Option<String>,
         #[arg(long)]
         prepare_only: bool,
+        /// Keep the game window hidden (needs the MC-CLI mod 1.6.0+; it keeps rendering for screenshots)
+        #[arg(long)]
+        headless: bool,
     },
 }
 
@@ -837,12 +840,16 @@ fn run() -> Result<()> {
             profile,
             account,
             prepare_only,
+            headless,
         } => {
             let profile_data = load_profile(&paths, &profile)?;
             let launch_account = resolve_launch_account(&paths, account)?;
+            let options = LaunchOptions { headless };
             if prepare_only {
                 // Never print credentials (e.g. --accessToken) from the launch plan.
-                let plan = prepare(&paths, &profile_data, &launch_account)?.redacted();
+                let plan = prepare(&paths, &profile_data, &launch_account)?
+                    .with_options(&options)
+                    .redacted();
                 println!("prepared instance: {}", plan.instance_dir.display());
                 println!("java: {}", plan.java_exec);
                 println!("main class: {}", plan.main_class);
@@ -850,7 +857,7 @@ fn run() -> Result<()> {
                 println!("jvm args: {}", plan.jvm_args.join(" "));
                 println!("game args: {}", plan.game_args.join(" "));
             } else {
-                launch(&paths, &profile_data, &launch_account)?;
+                launch_with(&paths, &profile_data, &launch_account, &options)?;
             }
         }
     }
