@@ -57,6 +57,20 @@ Shard updates symlinks to match the current profile state:
 - Removed content is unlinked
 - Disabled content is unlinked
 
+Shard only removes entries it manages in `mods/`, `resourcepacks/` and `shaderpacks/`:
+symlinks into the content store, entries listed in `.shard-managed.json` (the instance
+manifest, which is how copies are tracked on Windows where content is copied instead of
+symlinked), and files whose bytes are already in the content store. Files you drop in by hand
+are never deleted: they are kept in place and loaded by the game, and Shard prints
+
+```
+warning: unmanaged file kept: <path>; add it with `shard mod add <profile> <file>` to manage it
+```
+
+Adding the file with `shard mod add` (or `resourcepack`/`shaderpack add`) puts it in the
+store and the profile; on the next launch the hand-copied duplicate is replaced by the managed
+entry, so the mod is not loaded twice.
+
 ### Saves and Configs
 
 World saves and configs created by Minecraft are preserved between launches. They live in the instance directory and aren't affected by profile changes.
