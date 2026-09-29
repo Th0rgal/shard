@@ -374,6 +374,25 @@ fn resolve_neoforge_latest_version(mc_version: &str) -> Result<String> {
         .with_context(|| format!("no neoforge versions found for minecraft {mc_version}"))
 }
 
+/// Resolve the `latest` alias of a loader version to a concrete version for `mc_version`.
+/// Any other version string is returned unchanged.
+pub fn resolve_loader_version(
+    loader_type: &str,
+    mc_version: &str,
+    loader_version: &str,
+) -> Result<String> {
+    if !loader_version.eq_ignore_ascii_case("latest") {
+        return Ok(loader_version.to_string());
+    }
+    match loader_type {
+        "fabric" => resolve_fabric_latest_version(),
+        "quilt" => resolve_quilt_latest_version(),
+        "neoforge" => resolve_neoforge_latest_version(mc_version),
+        "forge" => resolve_forge_latest_version(mc_version),
+        other => bail!("unsupported loader type: {other}"),
+    }
+}
+
 fn ensure_neoforge_profile(paths: &Paths, mc_version: &str, loader_version: &str, java: Option<&str>) -> Result<String> {
     // Resolve "latest" to actual version number
     let resolved_version = if loader_version.eq_ignore_ascii_case("latest") {
@@ -1662,6 +1681,15 @@ mod tests {
         // "21.1." must not match 21.10.x builds (no trailing-dot confusion).
         let legacy = ["21.1.200", "21.1.219", "21.10.5-beta"];
         assert_eq!(pick_latest_neoforge(&legacy, "21.1."), Some("21.1.219"));
+    }
+
+    #[test]
+    fn resolve_loader_version_passes_through_concrete_versions() {
+        assert_eq!(
+            resolve_loader_version("fabric", "26.3", "0.19.5").unwrap(),
+            "0.19.5"
+        );
+        assert!(resolve_loader_version("unknown", "26.3", "latest").is_err());
     }
 
     #[test]

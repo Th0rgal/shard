@@ -20,7 +20,9 @@ use shard::logs::{
 };
 use shard::minecraft::{launch, prepare};
 use shard::modpack::import_mrpack;
-use shard::ops::{finish_device_code_flow, parse_loader, resolve_input, resolve_launch_account};
+use shard::ops::{
+    finish_device_code_flow, parse_loader, pin_latest_loader, resolve_input, resolve_launch_account,
+};
 use shard::paths::Paths;
 use shard::profile::{
     ContentRef, Loader, Runtime, clone_profile, create_profile, delete_profile, diff_profiles,
@@ -146,6 +148,8 @@ enum ProfileCommand {
         id: String,
         #[arg(long = "mc")]
         mc_version: String,
+        /// Mod loader: `fabric`, `quilt`, `forge` or `neoforge`, optionally with a version
+        /// (`fabric@0.19.5`). A bare type or `@latest` pins the latest version at creation time.
         #[arg(long)]
         loader: Option<String>,
         #[arg(long)]
@@ -346,6 +350,8 @@ enum TemplateCommand {
         description: Option<String>,
         #[arg(long = "mc")]
         mc_version: String,
+        /// Mod loader: `type` or `type@version` (a bare type means `type@latest`, which stays
+        /// floating in the template and is pinned when a profile is created from it)
         #[arg(long)]
         loader: Option<String>,
     },
@@ -670,12 +676,15 @@ fn run() -> Result<()> {
                     create_profile_from_template(&paths, &id, &template_id, java, memory, args)?;
                 } else {
                     let loader = match loader {
-                        Some(value) => Some(parse_loader(&value)?),
+                        Some(value) => Some(pin_latest_loader(parse_loader(&value)?, &mc_version)),
                         None => None,
                     };
                     let runtime = Runtime { java, memory, args };
-                    create_profile(&paths, &id, &mc_version, loader, runtime)?;
+                    let profile = create_profile(&paths, &id, &mc_version, loader, runtime)?;
                     println!("created profile {id}");
+                    if let Some(loader) = &profile.loader {
+                        println!("loader: {}@{}", loader.loader_type, loader.version);
+                    }
                 }
             }
             ProfileCommand::Clone { src, dst } => {
@@ -1721,10 +1730,15 @@ fn create_profile_from_template(
 ) -> Result<()> {
     let template = load_template(paths, template_id)?;
 
-    // Create loader from template
-    let loader = template.loader.map(|l| Loader {
-        loader_type: l.loader_type,
-        version: l.version,
+    // Create loader from template, pinning a floating `latest` to a concrete version
+    let loader = template.loader.map(|l| {
+        pin_latest_loader(
+            Loader {
+                loader_type: l.loader_type,
+                version: l.version,
+            },
+            &template.mc_version,
+        )
     });
 
     // Merge runtime settings (CLI overrides template)

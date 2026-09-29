@@ -7,7 +7,7 @@ use crate::auth::{
     xuid_from_minecraft_token,
 };
 use crate::config::load_config;
-use crate::minecraft::LaunchAccount;
+use crate::minecraft::{LaunchAccount, resolve_loader_version};
 use crate::paths::Paths;
 use crate::profile::Loader;
 use crate::store::store_from_url;
@@ -32,6 +32,33 @@ pub fn parse_loader(value: &str) -> Result<Loader> {
         loader_type: loader_type.to_ascii_lowercase(),
         version: version.to_string(),
     })
+}
+
+/// Pin a `<type>@latest` loader to the concrete version that is latest right now.
+///
+/// Profiles are reproducible manifests: storing the literal `latest` would make the loader
+/// silently change between launches whenever upstream publishes a new build. So `latest` means
+/// "latest at profile creation" and the resolved version is written to the profile. If the
+/// version cannot be resolved (e.g. offline), `latest` is kept with a warning and will be
+/// resolved at launch time as before.
+pub fn pin_latest_loader(loader: Loader, mc_version: &str) -> Loader {
+    if !loader.version.eq_ignore_ascii_case("latest") {
+        return loader;
+    }
+    match resolve_loader_version(&loader.loader_type, mc_version, &loader.version) {
+        Ok(version) => Loader {
+            loader_type: loader.loader_type,
+            version,
+        },
+        Err(err) => {
+            eprintln!(
+                "warning: could not resolve latest {} version for Minecraft {mc_version} ({err:#}); \
+                 keeping 'latest' (resolved at each launch)",
+                loader.loader_type
+            );
+            loader
+        }
+    }
 }
 
 pub fn resolve_input(
