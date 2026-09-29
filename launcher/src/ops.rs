@@ -2,7 +2,10 @@ use crate::accounts::{
     Account, MinecraftTokens, MsaTokens, find_account_mut, load_accounts, save_accounts,
     upsert_account,
 };
-use crate::auth::{DeviceCode, exchange_for_minecraft, poll_device_code, refresh_msa_token};
+use crate::auth::{
+    DeviceCode, exchange_for_minecraft, poll_device_code, refresh_msa_token,
+    xuid_from_minecraft_token,
+};
 use crate::config::load_config;
 use crate::minecraft::LaunchAccount;
 use crate::paths::Paths;
@@ -87,6 +90,14 @@ pub fn finish_device_code_flow(
     Ok(account)
 }
 
+/// Accounts added before xuid extraction was fixed have no stored xuid; recover it from the
+/// `xuid` claim of the (still valid) Minecraft access token so `--xuid` is populated.
+fn backfill_xuid(account: &mut Account) {
+    if account.xuid.as_deref().is_none_or(str::is_empty) {
+        account.xuid = xuid_from_minecraft_token(&account.minecraft.access_token);
+    }
+}
+
 pub fn resolve_launch_account(paths: &Paths, account_id: Option<String>) -> Result<LaunchAccount> {
     let config = load_config(paths)?;
     let client_id = config.msa_client_id.context(
@@ -132,6 +143,7 @@ pub fn resolve_launch_account(paths: &Paths, account_id: Option<String>) -> Resu
             account.xuid = minecraft_auth.xuid;
             account.uuid = minecraft_auth.uuid;
         }
+        backfill_xuid(account);
 
         (account.clone(), old_uuid)
     };
@@ -195,6 +207,7 @@ pub fn ensure_fresh_account(paths: &Paths, account_id: Option<String>) -> Result
             account.xuid = minecraft_auth.xuid;
             account.uuid = minecraft_auth.uuid;
         }
+        backfill_xuid(account);
 
         account.clone()
     };

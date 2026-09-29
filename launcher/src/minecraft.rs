@@ -130,7 +130,8 @@ pub fn prepare(paths: &Paths, profile: &Profile, account: &LaunchAccount) -> Res
         account,
     );
 
-    let (mut jvm_args, game_args) = build_args(&version, &vars)?;
+    let (mut jvm_args, mut game_args) = build_args(&version, &vars)?;
+    drop_empty_optional_args(&mut game_args);
 
     if let Some(memory) = &profile.runtime.memory
         && !jvm_args.iter().any(|arg| arg.starts_with("-Xmx")) {
@@ -822,12 +823,28 @@ fn build_var_map(
     );
     vars.insert("classpath".into(), classpath.to_string());
     vars.insert("user_properties".into(), "{}".to_string());
-    // auth_xuid should always be present (empty string if not available)
-    vars.insert(
-        "auth_xuid".into(),
-        account.xuid.clone().unwrap_or_default(),
-    );
+    // auth_xuid must always be substituted; when unknown it is empty and the
+    // `--xuid ""` pair is dropped afterwards by `drop_empty_optional_args`.
+    vars.insert("auth_xuid".into(), account.xuid.clone().unwrap_or_default());
     vars
+}
+
+/// Game flags that vanilla declares with an optional value defaulting to "" (joptsimple
+/// `withOptionalArg().defaultsTo("")`). When we have no value for them, passing `--flag ""`
+/// is noise (and looks like a bug), so drop the flag entirely.
+const OPTIONAL_GAME_FLAGS: &[&str] = &["--xuid", "--clientId"];
+
+fn drop_empty_optional_args(args: &mut Vec<String>) {
+    let mut idx = 0;
+    while idx < args.len() {
+        if OPTIONAL_GAME_FLAGS.contains(&args[idx].as_str())
+            && args.get(idx + 1).is_some_and(|value| value.is_empty())
+        {
+            args.drain(idx..idx + 2);
+            continue;
+        }
+        idx += 1;
+    }
 }
 
 fn ensure_jvm_flag(args: &mut Vec<String>, flag: &str, value: &Path) -> Result<()> {
@@ -1433,6 +1450,82 @@ mod tests {
         assert_eq!(redacted.main_class, plan.main_class);
         // The original plan (used to actually launch) is unchanged.
         assert_eq!(plan.game_args[1], "token-value");
+    }
+
+    #[test]
+    fn empty_xuid_is_dropped_but_known_xuid_kept() {
+        let mut args = strings(&[
+            "--clientId",
+            "abc",
+            "--xuid",
+            "",
+            "--versionType",
+            "release",
+        ]);
+        drop_empty_optional_args(&mut args);
+        assert_eq!(
+            args,
+            strings(&["--clientId", "abc", "--versionType", "release"])
+        );
+
+        let mut args = strings(&["--xuid", "2535400000000000", "--versionType", "release"]);
+        drop_empty_optional_args(&mut args);
+        assert_eq!(
+            args,
+            strings(&["--xuid", "2535400000000000", "--versionType", "release"])
+        );
+
+        // A trailing flag without value is left alone.
+        let mut args = strings(&["--xuid"]);
+        drop_empty_optional_args(&mut args);
+        assert_eq!(args, strings(&["--xuid"]));
+    }
+
+    #[test]
+    fn xuid_substitution_from_version_arguments() {
+        let account = LaunchAccount {
+            uuid: "uuid".to_string(),
+            username: "Steve".to_string(),
+            access_token: "token".to_string(),
+            xuid: Some("2535400000000000".to_string()),
+        };
+        let version: VersionJson = serde_json::from_str(
+            r#"{"id":"26.3","arguments":{"game":["--accessToken","${auth_access_token}","--xuid","${auth_xuid}"],"jvm":[]}}"#,
+        )
+        .unwrap();
+        let vars = build_var_map(
+            Path::new("/g"),
+            Path::new("/a"),
+            "30",
+            "cp",
+            Path::new("/n"),
+            Path::new("/l"),
+            &version,
+            &account,
+        );
+        let (_, game) = build_args(&version, &vars).unwrap();
+        assert_eq!(
+            game,
+            strings(&["--accessToken", "token", "--xuid", "2535400000000000"])
+        );
+
+        let account = LaunchAccount {
+            xuid: None,
+            ..account
+        };
+        let vars = build_var_map(
+            Path::new("/g"),
+            Path::new("/a"),
+            "30",
+            "cp",
+            Path::new("/n"),
+            Path::new("/l"),
+            &version,
+            &account,
+        );
+        let (_, mut game) = build_args(&version, &vars).unwrap();
+        drop_empty_optional_args(&mut game);
+        assert_eq!(game, strings(&["--accessToken", "token"]));
     }
 
 }
