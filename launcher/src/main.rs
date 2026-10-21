@@ -18,10 +18,11 @@ use shard::logs::{
     filter_by_level, format_entry, list_crash_reports, list_log_files, read_log_file,
     read_log_tail, search_logs, watch_log, LogLevel,
 };
-use shard::minecraft::{launch_with, prepare, LaunchOptions};
+use shard::minecraft::{launch_with, prepare, LaunchAccount, LaunchOptions};
 use shard::modpack::import_mrpack;
 use shard::ops::{
-    finish_device_code_flow, parse_loader, pin_latest_loader, resolve_input, resolve_launch_account,
+    ensure_fresh_account, finish_device_code_flow, parse_loader, pin_latest_loader, resolve_input,
+    resolve_launch_account,
 };
 use shard::paths::Paths;
 use shard::profile::{
@@ -136,6 +137,9 @@ enum Command {
         profile: String,
         #[arg(long)]
         account: Option<String>,
+        /// Launch in offline/dev mode with an optional username (default: Dev) for online-mode=false servers
+        #[arg(long, value_name = "USERNAME", num_args = 0..=1, default_missing_value = "Dev")]
+        offline: Option<String>,
         #[arg(long)]
         prepare_only: bool,
         /// Keep the game window hidden (needs the MC-CLI mod 1.6.0+; it keeps rendering for screenshots)
@@ -247,6 +251,8 @@ enum AccountCommand {
     Remove { id: String },
     /// Show account profile info (skin, cape)
     Info { id: Option<String> },
+    /// Validate and refresh Microsoft/Minecraft tokens without launching (prints no secrets)
+    Check { id: Option<String> },
     /// Export accounts to a JSON file (includes tokens for portability)
     Export {
         /// Output file path (default: accounts_export.json)
@@ -839,11 +845,19 @@ fn run() -> Result<()> {
         Command::Launch {
             profile,
             account,
+            offline,
             prepare_only,
             headless,
         } => {
             let profile_data = load_profile(&paths, &profile)?;
-            let launch_account = resolve_launch_account(&paths, account)?;
+            let launch_account = if let Some(username) = offline {
+                LaunchAccount::offline(&username)
+            } else if prepare_only {
+                resolve_launch_account(&paths, account)
+                    .unwrap_or_else(|_| LaunchAccount::offline("Dev"))
+            } else {
+                resolve_launch_account(&paths, account)?
+            };
             let options = LaunchOptions { headless };
             if prepare_only {
                 // Never print credentials (e.g. --accessToken) from the launch plan.
@@ -1157,6 +1171,10 @@ fn handle_account_command(paths: &Paths, command: AccountCommand) -> Result<()> 
                     println!("(could not fetch skin/cape info: {e})");
                 }
             }
+        }
+        AccountCommand::Check { id } => {
+            let account = ensure_fresh_account(paths, id)?;
+            println!("ok\t{}\t{}", account.username, account.uuid);
         }
         AccountCommand::Export { output } => {
             let accounts = load_accounts(paths)?;

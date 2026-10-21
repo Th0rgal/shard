@@ -96,7 +96,12 @@ fn materialize_instance_with(paths: &Paths, profile: &Profile, mode: LinkMode) -
             &target_dir,
             previous.entries(dir_name),
         )?;
-        let created = populate_dir(paths, items, kind, &target_dir, mode)?;
+        let effective_mode = if matches!(kind, ContentKind::ResourcePack | ContentKind::ShaderPack) {
+            LinkMode::Copy
+        } else {
+            mode
+        };
+        let created = populate_dir(paths, items, kind, &target_dir, effective_mode)?;
         manifest.entries_mut(dir_name).extend(created);
     }
 

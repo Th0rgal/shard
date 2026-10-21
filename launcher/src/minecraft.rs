@@ -27,6 +27,33 @@ pub struct LaunchAccount {
     pub xuid: Option<String>,
 }
 
+impl LaunchAccount {
+    /// Creates a deterministic offline/dev account (`OfflinePlayer:<username>`) for local testing
+    /// against `online-mode=false` servers or singleplayer worlds without Microsoft OAuth tokens.
+    pub fn offline(username: &str) -> Self {
+        let trimmed = username.trim();
+        let name = if trimmed.is_empty() { "Dev" } else { trimmed };
+        let mut hasher = Sha1::new();
+        hasher.update(format!("OfflinePlayer:{name}").as_bytes());
+        let digest = hasher.finalize();
+        let mut b = [0u8; 16];
+        b.copy_from_slice(&digest[..16]);
+        b[6] = (b[6] & 0x0f) | 0x30; // version 3
+        b[8] = (b[8] & 0x3f) | 0x80; // RFC 4122 variant
+        let uuid = format!(
+            "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+            b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]
+        );
+        Self {
+            uuid,
+            username: name.to_string(),
+            access_token: "0".to_string(),
+            xuid: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LaunchPlan {
     pub instance_dir: PathBuf,
@@ -746,20 +773,55 @@ fn ensure_assets(paths: &Paths, version: &VersionJson) -> Result<String> {
         .with_context(|| format!("failed to read asset index: {}", index_path.display()))?;
     let index: AssetIndex = serde_json::from_str(&data).context("failed to parse asset index")?;
 
-    for (name, object) in index.objects {
-        let _ = name; // reserved for future logging
-        if object.hash.len() < 2 {
-            continue;
+    let items: Vec<(PathBuf, String, String)> = index
+        .objects
+        .into_values()
+        .filter(|object| object.hash.len() >= 2)
+        .map(|object| {
+            let object_path = paths.minecraft_asset_object(&object.hash);
+            let url = object.url.unwrap_or_else(|| {
+                format!(
+                    "https://resources.download.minecraft.net/{}/{}",
+                    &object.hash[0..2],
+                    object.hash
+                )
+            });
+            (object_path, url, object.hash)
+        })
+        .collect();
+
+    let worker_count = 16usize.min(items.len().max(1));
+    let queue = std::sync::Arc::new(std::sync::Mutex::new(items.into_iter()));
+    let first_err: std::sync::Arc<std::sync::Mutex<Option<anyhow::Error>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(None));
+
+    std::thread::scope(|s| {
+        for _ in 0..worker_count {
+            let queue = std::sync::Arc::clone(&queue);
+            let first_err = std::sync::Arc::clone(&first_err);
+            s.spawn(move || {
+                loop {
+                    if first_err.lock().unwrap().is_some() {
+                        break;
+                    }
+                    let next = queue.lock().unwrap().next();
+                    let Some((object_path, url, hash)) = next else {
+                        break;
+                    };
+                    if let Err(err) = download_with_sha1(&url, &object_path, Some(&hash)) {
+                        let mut guard = first_err.lock().unwrap();
+                        if guard.is_none() {
+                            *guard = Some(err);
+                        }
+                        break;
+                    }
+                }
+            });
         }
-        let object_path = paths.minecraft_asset_object(&object.hash);
-        let url = object.url.clone().unwrap_or_else(|| {
-            format!(
-                "https://resources.download.minecraft.net/{}/{}",
-                &object.hash[0..2],
-                object.hash
-            )
-        });
-        download_with_sha1(&url, &object_path, Some(&object.hash))?;
+    });
+
+    if let Some(err) = first_err.lock().unwrap().take() {
+        return Err(err);
     }
 
     Ok(asset_index.id.clone())
@@ -917,7 +979,12 @@ fn build_var_map(
     vars.insert("auth_uuid".into(), account.uuid.clone());
     vars.insert("auth_access_token".into(), account.access_token.clone());
     vars.insert("clientid".into(), account.uuid.clone());
-    vars.insert("user_type".into(), "msa".to_string());
+    let user_type = if account.access_token == "0" && account.xuid.is_none() {
+        "legacy"
+    } else {
+        "msa"
+    };
+    vars.insert("user_type".into(), user_type.to_string());
     vars.insert(
         "version_type".into(),
         version
@@ -1040,8 +1107,18 @@ fn resolve_java(
     fallback
 }
 
+fn shared_http_client() -> &'static Client {
+    static CLIENT: std::sync::OnceLock<Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| Client::new())
+    })
+}
+
 fn download_text(url: &str) -> Result<String> {
-    let client = Client::new();
+    let client = shared_http_client();
     let resp = client.get(url).send().context("failed to download")?;
     let resp = resp.error_for_status().context("download failed")?;
     let text = resp.text().context("failed to read response")?;
@@ -1049,7 +1126,7 @@ fn download_text(url: &str) -> Result<String> {
 }
 
 fn download_json(url: &str) -> Result<Value> {
-    let client = Client::new();
+    let client = shared_http_client();
     let resp = client.get(url).send().context("failed to download json")?;
     let resp = resp.error_for_status().context("json download failed")?;
     let json: Value = resp.json().context("failed to parse json")?;
@@ -1074,28 +1151,41 @@ fn download_with_sha1(url: &str, path: &Path, expected_sha1: Option<&str>) -> Re
     }
 
     let tmp_path = path.with_extension("tmp");
-    let client = Client::new();
-    let mut resp = client
-        .get(url)
-        .send()
-        .with_context(|| format!("failed to download: {url}"))?
-        .error_for_status()
-        .with_context(|| format!("download failed: {url}"))?;
+    let client = shared_http_client();
+    let mut last_err = None;
+    for attempt in 0..4 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(250 * (1 << attempt)));
+        }
+        let step: Result<()> = (|| {
+            let mut resp = client
+                .get(url)
+                .send()
+                .with_context(|| format!("failed to download: {url}"))?
+                .error_for_status()
+                .with_context(|| format!("download failed: {url}"))?;
 
-    let mut out = fs::File::create(&tmp_path)
-        .with_context(|| format!("failed to create file: {}", tmp_path.display()))?;
-    std::io::copy(&mut resp, &mut out).context("failed to write download")?;
+            let mut out = fs::File::create(&tmp_path)
+                .with_context(|| format!("failed to create file: {}", tmp_path.display()))?;
+            std::io::copy(&mut resp, &mut out).context("failed to write download")?;
 
-    if let Some(expected) = expected_sha1 {
-        let actual = sha1_file(&tmp_path)?;
-        if !actual.eq_ignore_ascii_case(expected) {
-            bail!("sha1 mismatch for {}", path.display());
+            if let Some(expected) = expected_sha1 {
+                let actual = sha1_file(&tmp_path)?;
+                if !actual.eq_ignore_ascii_case(expected) {
+                    bail!("sha1 mismatch for {}", path.display());
+                }
+            }
+
+            fs::rename(&tmp_path, path)
+                .with_context(|| format!("failed to move file into place: {}", path.display()))?;
+            Ok(())
+        })();
+        match step {
+            Ok(()) => return Ok(()),
+            Err(err) => last_err = Some(err),
         }
     }
-
-    fs::rename(&tmp_path, path)
-        .with_context(|| format!("failed to move file into place: {}", path.display()))?;
-    Ok(())
+    Err(last_err.unwrap())
 }
 
 fn sha1_file(path: &Path) -> Result<String> {
@@ -1753,5 +1843,19 @@ mod tests {
                 .unwrap();
         let merged = merge_versions(parent, child);
         assert_eq!(merged.java_version.map(|j| j.major_version), Some(25));
+    }
+
+    #[test]
+    fn offline_account_generates_deterministic_uuid_and_legacy_user_type() {
+        let acc1 = LaunchAccount::offline("Uxon");
+        let acc2 = LaunchAccount::offline("Uxon");
+        assert_eq!(acc1.username, "Uxon");
+        assert_eq!(acc1.uuid, acc2.uuid);
+        assert_eq!(acc1.uuid.len(), 36);
+        assert_eq!(acc1.access_token, "0");
+        assert!(acc1.xuid.is_none());
+
+        let empty = LaunchAccount::offline("   ");
+        assert_eq!(empty.username, "Dev");
     }
 }

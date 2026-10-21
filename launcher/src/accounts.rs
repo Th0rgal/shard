@@ -309,18 +309,18 @@ fn delete_tokens_keyring(id: &str) -> Result<()> {
 
 fn store_tokens(paths: &Paths, uuid: &str, tokens: &StoredTokens) -> Result<()> {
     if is_keyring_available() {
-        store_tokens_keyring(uuid, tokens)
-    } else {
-        store_tokens_file(paths, uuid, tokens)
+        let _ = store_tokens_keyring(uuid, tokens);
     }
+    store_tokens_file(paths, uuid, tokens)
 }
 
 fn load_tokens(paths: &Paths, uuid: &str) -> Result<StoredTokens> {
     if is_keyring_available() {
-        load_tokens_keyring(uuid)
-    } else {
-        load_tokens_file(paths, uuid)
+        if let Ok(tokens) = load_tokens_keyring(uuid) {
+            return Ok(tokens);
+        }
     }
+    load_tokens_file(paths, uuid)
 }
 
 pub fn delete_account_tokens(paths: &Paths, id: &str) -> Result<()> {

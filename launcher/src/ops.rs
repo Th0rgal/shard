@@ -193,21 +193,20 @@ pub fn resolve_launch_account(paths: &Paths, account_id: Option<String>) -> Resu
 /// Returns the updated account with fresh Minecraft access token.
 pub fn ensure_fresh_account(paths: &Paths, account_id: Option<String>) -> Result<Account> {
     let config = load_config(paths)?;
-    let client_id = config.msa_client_id.context(
-        "missing Microsoft client id; set SHARD_MS_CLIENT_ID or shard config set-client-id",
-    )?;
-    let client_secret = config.msa_client_secret.as_deref();
-
     let mut accounts = load_accounts(paths)?;
     let target = account_id
         .or_else(|| accounts.active.clone())
         .context("no account selected")?;
 
-    // Refresh MSA token if expired
+    // Refresh MSA token only if expired OR if Minecraft token is expired and needs a fresh MSA token
     {
         let account = find_account_mut(&mut accounts, &target)
             .with_context(|| format!("account not found: {target}"))?;
-        if account.msa.is_expired() {
+        if account.msa.is_expired() && account.minecraft.is_expired() {
+            let client_id = config.msa_client_id.context(
+                "missing Microsoft client id; set SHARD_MS_CLIENT_ID or shard config set-client-id",
+            )?;
+            let client_secret = config.msa_client_secret.as_deref();
             let refreshed =
                 refresh_msa_token(&client_id, client_secret, &account.msa.refresh_token)?;
             account.msa = MsaTokens {
@@ -215,6 +214,19 @@ pub fn ensure_fresh_account(paths: &Paths, account_id: Option<String>) -> Result
                 refresh_token: refreshed.refresh_token,
                 expires_at: refreshed.expires_at,
             };
+        } else if account.msa.is_expired() {
+            if let Some(client_id) = config.msa_client_id.as_deref() {
+                let client_secret = config.msa_client_secret.as_deref();
+                if let Ok(refreshed) =
+                    refresh_msa_token(client_id, client_secret, &account.msa.refresh_token)
+                {
+                    account.msa = MsaTokens {
+                        access_token: refreshed.access_token,
+                        refresh_token: refreshed.refresh_token,
+                        expires_at: refreshed.expires_at,
+                    };
+                }
+            }
         }
     }
     save_accounts(paths, &accounts)?;
